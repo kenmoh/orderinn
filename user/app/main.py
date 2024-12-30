@@ -1,10 +1,9 @@
 from contextlib import asynccontextmanager
-from fastapi import Depends, FastAPI, BackgroundTasks, Response
+from fastapi import Depends, FastAPI
 from sqlmodel import Session
 
 from user.app.database.database import SessionLocal, init_db
-# from user.app.utils.utils import check_subscriptions
-from user.app.models.users import deactivate_expired_subscriptions, init_role_permissions
+from user.app.models.users import init_role_permissions
 
 
 @asynccontextmanager
