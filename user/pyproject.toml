@@ -1,0 +1,18 @@
+[project]
+name = "user"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "alembic>=1.14.0",
+    "asyncpg>=0.30.0",
+    "fastapi[standard]>=0.115.6",
+    "passlib>=1.7.4",
+    "psycopg2-binary>=2.9.10",
+    "pydantic-settings>=2.7.0",
+    "python-dotenv>=1.0.1",
+    "python-jose>=3.3.0",
+    "slowapi>=0.1.9",
+    "sqlmodel>=0.0.22",
+]
