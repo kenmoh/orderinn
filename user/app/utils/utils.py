@@ -2,17 +2,16 @@ from enum import Enum
 
 
 class UserRole(str, Enum):
-    SUPER_ADMIN = "super_admin"        # SaaS platform administrator
-    HOTEL_OWNER = "hotel_owner"        # Owner of a specific hotel
-    MANAGER = "manager"                # Hotel manager
-    CHEF = "chef"                      # Kitchen staff
-    WAITER = "waiter"                  # Service staff
-    GUEST = "guest"                  # Service staff
+    SUPER_ADMIN = "super_admin"  # SaaS platform administrator
+    HOTEL_OWNER = "hotel_owner"  # Owner of a specific hotel
+    MANAGER = "manager"  # Hotel manager
+    CHEF = "chef"  # Kitchen staff
+    WAITER = "waiter"  # Service staff
+    GUEST = "guest"  # Guest user
     LAUNDRY_ATTENDANT = "laundry_attendant"  # Laundry staff
 
 
 class Resource(str, Enum):
-    # HOTEL = "hotel"
     USER = "user"
     ITEM = "item"
     ORDER = "order"

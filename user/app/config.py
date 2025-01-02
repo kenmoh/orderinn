@@ -19,10 +19,7 @@ class Settings(BaseSettings):
     # MAIL_SERVER: str
     ENV: str = "production"
 
-    model_config = SettingsConfigDict(
-        env_file='.env',
-        extra='ignore'
-    )
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 @lru_cache()

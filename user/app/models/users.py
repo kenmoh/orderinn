@@ -1,3 +1,7 @@
+from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlmodel import Session, create_engine, text
+from sqlalchemy.orm import sessionmaker
+from sqlmodel.ext.asyncio.session import AsyncSession
 from enum import Enum
 from typing import Dict, Optional, Set
 import uuid
@@ -6,9 +10,8 @@ from fastapi import Depends, HTTPException
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel, Session, select, delete
 
-from user.app.utils.utils import Permission, Resource, UserRole
-from user.app.database.database import init_db
-from user.app.utils.auth import get_current_user, get_password_hash
+
+from ..utils.utils import Permission, Resource, UserRole
 
 
 class PaymentGateway(str, Enum):
@@ -18,12 +21,18 @@ class PaymentGateway(str, Enum):
 
 class UserRolePermission(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: uuid.UUID = Field(foreign_key="user.id")
+    user_id: uuid.UUID = Field(foreign_key="user.id", ondelete="CASCADE")
     role_permission_id: int = Field(foreign_key="rolepermission.id")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "role_permission_id", name="unique_user_role_permission"
+        ),
+    )
 
 
 class RolePermission(SQLModel, table=True):
-    __tablename__ = 'rolepermission'
+    __tablename__ = "rolepermission"
     """
     Defines what permissions each role has for different resources.
     This is a separate table in the database.
@@ -32,43 +41,53 @@ class RolePermission(SQLModel, table=True):
     role: UserRole
     resource: Resource
     permission: Permission
-    created_at: datetime = Field(default_factory=datetime.now)
 
     users: list["User"] = Relationship(
         back_populates="role_permissions",
-        link_model=UserRolePermission
+        link_model=UserRolePermission,
     )
 
     __table_args__ = (
-        UniqueConstraint('role', 'resource', 'permission',
-                         name='unique_role_resource_permission'),
+        UniqueConstraint(
+            "role", "resource", "permission", name="unique_role_resource_permission"
+        ),
     )
 
 
 class User(SQLModel, table=True):
-    id: uuid.UUID = Field(
-        primary_key=True, default_factory=uuid.uuid1, index=True)
-    email: str
+    id: uuid.UUID = Field(primary_key=True, default_factory=uuid.uuid1, index=True)
+    email: str = Field(unique=True)
     password: str
-    company_name: str = Field(index=True)
-    role: UserRole
-    company_id: uuid.UUID = Field(
-        foreign_key="user.id", index=True, nullable=True)
+    company_name: str | None = Field(index=True, unique=True)
+    role: UserRole = Field(nullable=False)
+    company_id: uuid.UUID = Field(foreign_key="user.id", index=True, nullable=True)
 
-    is_subscribed: bool = Field(default=False)
-    subscription_start_date: datetime = Field(default=None, nullable=True)
+    is_subscribed: Optional[bool] = Field(default=False)
+    subscription_start_date: Optional[datetime] = Field(default=None, nullable=True)
 
     role_permissions: list[RolePermission] = Relationship(
         back_populates="users",
-        link_model=UserRolePermission
+        link_model=UserRolePermission,
+        # cascade_delete=True,
+        # passive_deletes=True
+        # sa_relationship_kwargs={
+        #     "cascade": "all, delete-orphan",
+        #     'single_parent': True
+        # }
     )
     profile: Optional["Profile"] = Relationship(
-        back_populates="user")
+        back_populates="user", cascade_delete=True
+    )
 
-    company: Optional['User'] = Relationship(back_populates="staff",
-                                             sa_relationship_kwargs={'remote_side': 'User.id', 'cascade': 'all'})
-    staff: Optional['User'] = Relationship(back_populates="company")
-    created_at: datetime = Field(default=datetime.now())
+    company: Optional["User"] = Relationship(
+        back_populates="staff",
+        sa_relationship_kwargs={"remote_side": "User.id", "cascade": "all"},
+    )
+    staff: Optional["User"] = Relationship(
+        back_populates="company", cascade_delete=True
+    )
+    # created_at: datetime = Field(default=datetime.now())
+    created_at: datetime = Field(default_factory=datetime.now)
 
 
 class Profile(SQLModel, table=True):
@@ -78,93 +97,15 @@ class Profile(SQLModel, table=True):
     payment_gateway_key: str
     payment_gateway_secret: str
     payment_gateway: PaymentGateway
-    user_id: uuid.UUID = Field(
-        default=None, foreign_key="user.id", unique=True)
+    user_id: uuid.UUID = Field(default=None, foreign_key="user.id", unique=True)
     user: Optional["User"] = Relationship(
-        back_populates="profile", sa_relationship_kwargs={'uselist': False})
+        back_populates="profile", sa_relationship_kwargs={"uselist": False}
+    )
 
 
-def init_role_permissions(session: Session):
-    """
-    Initialize role-based permissions in the database.
-    This function defines what each role can do with each resource.
-    """
-    # Define permissions matrix
-    permissions_matrix = {
-        UserRole.SUPER_ADMIN: {
-            Resource.USER: [Permission.CREATE, Permission.READ, Permission.UPDATE, Permission.DELETE],
-            Resource.ITEM: [Permission.CREATE, Permission.READ, Permission.UPDATE, Permission.DELETE],
-            Resource.ORDER: [Permission.CREATE, Permission.READ, Permission.UPDATE, Permission.DELETE],
-            Resource.INVENTORY: [Permission.CREATE, Permission.READ, Permission.UPDATE, Permission.DELETE],
-            Resource.PAYMENT: [Permission.CREATE, Permission.READ,
-                               Permission.UPDATE, Permission.DELETE]
-        },
-        UserRole.HOTEL_OWNER: {
-            Resource.USER: [Permission.CREATE, Permission.READ, Permission.UPDATE, Permission.DELETE],
-            Resource.ITEM: [Permission.CREATE, Permission.READ, Permission.UPDATE, Permission.DELETE],
-            Resource.ORDER: [Permission.READ, Permission.UPDATE],
-            Resource.STOCK: [Permission.READ, Permission.UPDATE, Permission.DELETE, Permission.CREATE],
-            Resource.INVENTORY: [Permission.READ, Permission.UPDATE],
-            Resource.PAYMENT: [Permission.READ]
-        },
-        UserRole.MANAGER: {
-            Resource.USER: [Permission.READ],
-            Resource.ITEM: [Permission.CREATE, Permission.READ],
-            Resource.ORDER: [Permission.READ, Permission.UPDATE],
-            Resource.INVENTORY: [Permission.READ],
-            Resource.STOCK: [Permission.READ, Permission.UPDATE],
-            Resource.PAYMENT: [Permission.READ]
-        },
-        UserRole.CHEF: {
-            Resource.ITEM: [Permission.READ, Permission.UPDATE],
-            Resource.ORDER: [Permission.READ, Permission.UPDATE],
-            Resource.STOCK: [Permission.READ, Permission.UPDATE],
-            Resource.INVENTORY: [Permission.READ]
-        },
-        UserRole.WAITER: {
-            Resource.ITEM: [Permission.READ, Permission.UPDATE],
-            Resource.ORDER: [Permission.READ, Permission.UPDATE],
-            Resource.STOCK: [Permission.READ, Permission.UPDATE],
-            Resource.INVENTORY: [Permission.READ]
-        },
-        UserRole.LAUNDRY_ATTENDANT: {
-            Resource.ITEM: [Permission.READ, Permission.UPDATE],
-            Resource.STOCK: [Permission.READ, Permission.UPDATE],
-            Resource.ORDER: [Permission.READ, Permission.UPDATE],
-            Resource.INVENTORY: [Permission.READ]
-        },
-        UserRole.GUEST: {
-            Resource.ITEM: [Permission.READ],
-            Resource.ORDER: [Permission.READ, Permission.CREATE],
-
-        }
-    }
-
-    # Clear existing permissions
-    session.exec(select(RolePermission)).delete()
-
-    # Insert default permissions into the database if they don't already exist
-    for role, resources in permissions_matrix.items():
-        for resource, permissions in resources.items():
-            for permission in permissions:
-                existing_permission = session.exec(
-                    select(RolePermission).where(
-                        RolePermission.role == role,
-                        RolePermission.resource == resource,
-                        RolePermission.permission == permission
-                    )
-                ).first()
-                if not existing_permission:
-                    role_permission = RolePermission(
-                        role=role,
-                        resource=resource,
-                        permission=permission
-                    )
-                    session.add(role_permission)
-    session.commit()
-
-
-def get_user_permissions(session: Session, user_role: UserRole) -> Dict[Resource, Set[Permission]]:
+def get_user_permissions(
+    session: Session, user_role: UserRole
+) -> Dict[Resource, Set[Permission]]:
     """
     Get all permissions for a specific user role.
     Returns a dictionary of resources and their allowed permissions.
@@ -183,10 +124,7 @@ def get_user_permissions(session: Session, user_role: UserRole) -> Dict[Resource
 
 
 def check_user_permission(
-    session: Session,
-    user: User,
-    resource: Resource,
-    required_permission: Permission
+    session: Session, user: User, resource: Resource, required_permission: Permission
 ) -> bool:
     """
     Check if a specific user has a specific permission for a resource.
@@ -198,18 +136,14 @@ def check_user_permission(
         .where(
             UserRolePermission.user_id == user.id,
             RolePermission.resource == resource,
-            RolePermission.permission == required_permission
+            RolePermission.permission == required_permission,
         )
     ).first()
 
     return permission_exists is not None
 
 
-async def assign_role_permissions(
-    session: Session,
-    user: User,
-    role: UserRole
-) -> None:
+async def assign_role_permissions(session: Session, user: User, role: UserRole) -> None:
     """
     Assign all permissions for a role to a user.
     """
@@ -226,8 +160,7 @@ async def assign_role_permissions(
     # Assign new permissions
     for permission in role_permissions:
         user_permission = UserRolePermission(
-            user_id=user.id,
-            role_permission_id=permission.id
+            user_id=user.id, role_permission_id=permission.id
         )
         session.add(user_permission)
 
@@ -235,21 +168,24 @@ async def assign_role_permissions(
 
 
 def require_permission(resource: Resource, permission: Permission):
+    from app.database.database import init_db
+    from ..auth.auth import get_current_user
+
     async def permission_checker(
         current_user: User = Depends(get_current_user),
-        session: Session = Depends(init_db)
+        session: Session = Depends(init_db),
     ):
         has_permission = check_user_permission(
             session=session,
             user=current_user,
             resource=resource,
-            required_permission=permission
+            required_permission=permission,
         )
 
         if not has_permission:
             raise HTTPException(
                 status_code=403,
-                detail=f"You do not have {permission} permission for this {resource}"
+                detail=f"You do not have {permission} permission for this {resource}",
             )
 
         return current_user
@@ -258,11 +194,12 @@ def require_permission(resource: Resource, permission: Permission):
 
 
 def deactivate_expired_subscriptions(db: Session):
-    users = db.exec(select(User).where(
-        User.is_subscribed == True)).all()
+    users = db.exec(select(User).where(User.is_subscribed == True)).all()
     for user in users:
         now = datetime.now()
-        if user.subscription_start_date and (now - user.subscription_start_date) > timedelta(days=30):
+        if user.subscription_start_date and (
+            now - user.subscription_start_date
+        ) > timedelta(days=30):
             user.subscription_start_date = None
             db.add(user)
             db.commit()
