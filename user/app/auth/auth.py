@@ -21,7 +21,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/login")
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme), session: AsyncSession = Depends(get_db)
+    token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
 ):
     """
     Get the current authenticated user from the JWT token.
@@ -45,21 +45,18 @@ async def get_current_user(
     try:
         # Decode JWT token
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
-        if user_id is None:
+
+        id: str = payload.get("id")
+        if id is None:
             raise credentials_exception
 
         # Get user from database
-        user = session.exec(select(User).where(
-            User.id == int(user_id))).first()
+        stmt = select(User).where(User.id == id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
 
         if user is None:
             raise credentials_exception
-
-        if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user"
-            )
 
         return user
 

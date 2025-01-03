@@ -68,24 +68,24 @@ async def init_role_permissions(session: AsyncSession):
             Resource.ITEM: [Permission.CREATE, Permission.READ],
             Resource.ORDER: [Permission.READ, Permission.UPDATE],
             Resource.INVENTORY: [Permission.READ],
-            Resource.STOCK: [Permission.READ, Permission.UPDATE],
+            Resource.STOCK: [Permission.READ, Permission.CREATE, Permission.UPDATE],
             Resource.PAYMENT: [Permission.READ],
         },
         UserRole.CHEF: {
             Resource.ITEM: [Permission.READ, Permission.UPDATE],
             Resource.ORDER: [Permission.READ, Permission.UPDATE],
-            Resource.STOCK: [Permission.READ, Permission.UPDATE],
+            Resource.STOCK: [Permission.READ, Permission.CREATE, Permission.UPDATE],
             Resource.INVENTORY: [Permission.READ],
         },
         UserRole.WAITER: {
             Resource.ITEM: [Permission.READ, Permission.UPDATE],
             Resource.ORDER: [Permission.READ, Permission.UPDATE],
-            Resource.STOCK: [Permission.READ, Permission.UPDATE],
+            Resource.STOCK: [Permission.READ, Permission.CREATE, Permission.UPDATE],
             Resource.INVENTORY: [Permission.READ],
         },
         UserRole.LAUNDRY_ATTENDANT: {
-            Resource.ITEM: [Permission.READ, Permission.UPDATE],
-            Resource.STOCK: [Permission.READ, Permission.UPDATE],
+            Resource.ITEM: [Permission.READ],
+            Resource.STOCK: [Permission.READ, Permission.CREATE, Permission.UPDATE],
             Resource.ORDER: [Permission.READ, Permission.UPDATE],
             Resource.INVENTORY: [Permission.READ],
         },
@@ -115,7 +115,10 @@ async def init_role_permissions(session: AsyncSession):
                         role=role, resource=resource, permission=permission
                     )
                     session.add(role_permission)
-                    print(f"Added permission: {role} - {resource} - {permission}")
+                    print(
+                        f"Added permission: {
+                          role} - {resource} - {permission}"
+                    )
     await session.commit()
     print("Role permissions initialized.")
 

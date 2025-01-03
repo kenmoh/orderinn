@@ -1,8 +1,4 @@
-from sqlalchemy.ext.asyncio import AsyncEngine
-from sqlmodel import Session, create_engine, text
-from sqlalchemy.orm import sessionmaker
-from sqlmodel.ext.asyncio.session import AsyncSession
-from enum import Enum
+from sqlmodel import Session
 from typing import Dict, Optional, Set
 import uuid
 from datetime import datetime, timedelta
@@ -10,13 +6,8 @@ from fastapi import Depends, HTTPException
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel, Session, select, delete
 
-
+from ..schemas.user_schema import PaymentGateway
 from ..utils.utils import Permission, Resource, UserRole
-
-
-class PaymentGateway(str, Enum):
-    FLUTTERWAVE = "flutterwave"
-    PAYSTACK = "paystack"
 
 
 class UserRolePermission(SQLModel, table=True):
@@ -68,12 +59,6 @@ class User(SQLModel, table=True):
     role_permissions: list[RolePermission] = Relationship(
         back_populates="users",
         link_model=UserRolePermission,
-        # cascade_delete=True,
-        # passive_deletes=True
-        # sa_relationship_kwargs={
-        #     "cascade": "all, delete-orphan",
-        #     'single_parent': True
-        # }
     )
     profile: Optional["Profile"] = Relationship(
         back_populates="user", cascade_delete=True
@@ -143,30 +128,6 @@ def check_user_permission(
     return permission_exists is not None
 
 
-async def assign_role_permissions(session: Session, user: User, role: UserRole) -> None:
-    """
-    Assign all permissions for a role to a user.
-    """
-    # Get all permissions for the role
-    role_permissions = session.exec(
-        select(RolePermission).where(RolePermission.role == role)
-    ).all()
-
-    # Clear existing permissions
-    session.exec(
-        delete(UserRolePermission).where(UserRolePermission.user_id == user.id)
-    )
-
-    # Assign new permissions
-    for permission in role_permissions:
-        user_permission = UserRolePermission(
-            user_id=user.id, role_permission_id=permission.id
-        )
-        session.add(user_permission)
-
-    session.commit()
-
-
 def require_permission(resource: Resource, permission: Permission):
     from app.database.database import init_db
     from ..auth.auth import get_current_user
@@ -203,27 +164,3 @@ def deactivate_expired_subscriptions(db: Session):
             user.subscription_start_date = None
             db.add(user)
             db.commit()
-
-
-# async def create_user_with_permissions(
-#     session: Session,
-#     user_data: UserCreate
-# ) -> User:
-#     """
-#     Create a new user and assign appropriate permissions based on their role.
-#     """
-#     # Create the user
-#     new_user = User(
-#         email=user_data.email,
-#         password=get_password_hash(user_data.password),
-#         company_name=user_data.full_name,
-#         role=user_data.role,
-#         hotel_id=user_data.hotel_id
-#     )
-#     session.add(new_user)
-#     session.commit()
-
-#     # Assign permissions based on role
-#     await assign_role_permissions(session, new_user, user_data.role)
-
-#     return new_user

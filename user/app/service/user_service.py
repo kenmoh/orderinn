@@ -1,12 +1,47 @@
-from math import e
+from pathlib import Path
+import zipfile
+import qrcode
 import uuid
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from cryptography.fernet import Fernet
+
+from user.app.utils.utils import Permission
+
 from ..utils.auth import hash_password
-from ..models.users import RolePermission, User, UserRole, UserRolePermission
-from ..schemas.user_schema import CreateUserSchema, CreateStaffUserSchema
+from ..models.users import Profile, RolePermission, User, UserRole, UserRolePermission
+from ..schemas.user_schema import (
+    CreateUserSchema,
+    CreateStaffUserSchema,
+    GenerateRoomQRCodeSchema,
+    ProfileSchema,
+)
+from ..config import get_settings
+
+settings = get_settings()
+
+ENCRYPTION_KEY = settings.ENCRYPTION_KEY
+cipher_suite = Fernet(ENCRYPTION_KEY)
+
+
+class APIGatewayCredentialsService:
+    @staticmethod
+    def encrypt_value(value: str) -> str:
+        """Encrypt a string value"""
+        if not value:
+            return None
+        encrypted_value = cipher_suite.encrypt(value.encode())
+        return encrypted_value.decode()
+
+    @staticmethod
+    def decrypt_value(encrypted_value: str) -> str:
+        """Decrypt an encrypted string value"""
+        if not encrypted_value:
+            return None
+        decrypted_value = cipher_suite.decrypt(encrypted_value.encode())
+        return decrypted_value.decode()
 
 
 class UserService:
@@ -153,8 +188,129 @@ class UserService:
         await db.refresh(new_staff)
         return new_staff
 
+    async def create_profile(
+        self,
+        company_id: uuid.UUID,
+        data: ProfileSchema,
+        db: AsyncSession,
+        current_user: User,
+    ):
+        if current_user.id != company_id and current_user.role != UserRole.HOTEL_OWNER:
+            return "You are not allowed to perform this action"
+
+        try:
+            user_profile = Profile(
+                address=data.address,
+                cac_reg_number=data.cac_reg_number,
+                payment_gateway=data.payment_gateway,
+                payment_gateway_key=APIGatewayCredentialsService.encrypt_value(
+                    data.api_key
+                ),
+                payment_gateway_secret=APIGatewayCredentialsService.encrypt_value(
+                    data.api_secret
+                ),
+                user_id=current_user.id,
+            )
+
+            db.add(user_profile)
+            await db.commit()
+            await db.refresh(user_profile)
+            return user_profile
+        except Exception as e:
+            db.rollback()
+            return e
+
+    async def update_profile(
+        self,
+        company_id: uuid.UUID,
+        data: ProfileSchema,
+        db: AsyncSession,
+        current_user: User,
+    ):
+        if current_user.id != company_id and current_user.role != UserRole.HOTEL_OWNER:
+            return "You are not allowed to perform this action"
+
+        user_profile = Profile(
+            address=data.address,
+            cac_reg_number=data.cac_reg_number,
+            payment_gateway=data.payment_gateway,
+            payment_gateway_key=APIGatewayCredentialsService.encrypt_value(
+                data.api_key
+            ),
+            payment_gateway_secret=APIGatewayCredentialsService.encrypt_value(
+                data.api_secret
+            ),
+            user_id=current_user.id,
+        )
+
+        db.add(user_profile)
+        await db.commit()
+        await db.refresh(user_profile)
+        return user_profile
+
     async def delete_user(self, user_id: int, db: AsyncSession):
         user = await self.get_user(user_id, db)
         if user:
             await db.delete(user)
             await db.commit()
+
+
+class CreateRoomService:
+    def generate_rooms_qrcode(
+        self,
+        company_id: uuid.UUID,
+        room: GenerateRoomQRCodeSchema,
+        current_user: User,
+        base_url: str = "https://orderinn.com/room",
+    ) -> str:
+        """
+        Generate QR codes for room numbers and return zip file path
+
+        Args:
+            company_id: UUID of the company
+            room_numbers: List(comma-separated strings) of room numbers to generate QR codes for
+            base_url: Base URL for QR code links
+
+        Returns:
+            str: Path to zip file containing QR codes
+        """
+
+        if (
+            current_user.role != UserRole.HOTEL_OWNER
+            or current_user.role != UserRole.MANAGER
+        ) and current_user.id != company_id:
+            return "You are not allowed to perform this action"
+
+        temp_dir = Path("room-qrcodes")
+        temp_dir.mkdir(exist_ok=True)
+
+        zip_path = temp_dir / f"room-qrcodes-{company_id}.zip"
+
+        with zipfile.ZipFile(zip_path, "w") as zip_file:
+            for room in room.room_numbers.split(","):
+                print(room, "XXXXXXXXXXXXXXXXXXXXXXXXXXXX")
+                room = room.strip()
+                room_url = f"{base_url}/{company_id}?room-number={room}"
+
+                qr = qrcode.QRCode(
+                    version=1,
+                    error_correction=qrcode.constants.ERROR_CORRECT_L,
+                    box_size=10,
+                    border=4,
+                )
+                qr.add_data(room_url)
+                qr.make(fit=True)
+
+                qr_image = qr.make_image(fill_color="black", back_color="white")
+
+                # Save QR code to temporary file
+                temp_file = temp_dir / f"room_{room}.png"
+                qr_image.save(temp_file)
+
+                # Add to zip file
+                zip_file.write(temp_file, f"room_{room}.png")
+
+                # Clean up temporary file
+                temp_file.unlink()
+
+            return str(zip_path)

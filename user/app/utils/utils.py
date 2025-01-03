@@ -1,14 +1,18 @@
 from enum import Enum
 
+from ..config import get_settings
+
+settings = get_settings()
+
 
 class UserRole(str, Enum):
-    SUPER_ADMIN = "super_admin"  # SaaS platform administrator
-    HOTEL_OWNER = "hotel_owner"  # Owner of a specific hotel
-    MANAGER = "manager"  # Hotel manager
-    CHEF = "chef"  # Kitchen staff
-    WAITER = "waiter"  # Service staff
-    GUEST = "guest"  # Guest user
-    LAUNDRY_ATTENDANT = "laundry_attendant"  # Laundry staff
+    SUPER_ADMIN = settings.SUPER_ADMIN  # SaaS platform administrator
+    HOTEL_OWNER = settings.HOTEL_OWNER  # Owner of a specific hotel
+    MANAGER = settings.MANAGER  # Hotel manager
+    CHEF = settings.CHEF  # Kitchen staff
+    WAITER = settings.WAITER  # Service staff
+    GUEST = settings.GUEST  # Guest user
+    LAUNDRY_ATTENDANT = settings.LAUNDRY_ATTENDANT  # Laundry staff
 
 
 class Resource(str, Enum):
