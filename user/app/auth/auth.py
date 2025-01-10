@@ -1,8 +1,11 @@
+from beanie import PydanticObjectId
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from jose import JWTError, jwt
+
+from user.app.models import user_model
 
 from ..schemas.user_schema import UserReturnSchema
 from ..config import get_settings
@@ -46,14 +49,16 @@ async def get_current_user(
         # Decode JWT token
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
 
-        id: str = payload.get("id")
+        id: PydanticObjectId = payload.get("id")
         if id is None:
             raise credentials_exception
 
         # Get user from database
-        stmt = select(User).where(User.id == id)
-        result = await db.execute(stmt)
-        user = result.scalar_one_or_none()
+        # stmt = select(User).where(User.id == id)
+        # result = await db.execute(stmt)
+        # user = result.scalar_one_or_none()
+
+        user = user_model.User.find(user_model.User.id == id).first_or_none()
 
         if user is None:
             raise credentials_exception

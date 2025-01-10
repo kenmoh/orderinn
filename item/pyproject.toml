@@ -10,5 +10,6 @@ dependencies = [
     "fastapi[standard]",
     "psycopg2-binary>=2.9.10",
     "pydantic-settings>=2.7.1",
+    "python-jose>=3.3.0",
     "sqlmodel",
 ]

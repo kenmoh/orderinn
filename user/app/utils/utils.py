@@ -29,3 +29,13 @@ class Permission(str, Enum):
     READ = "read"
     UPDATE = "update"
     DELETE = "delete"
+
+
+class ServiceError(Exception):
+    """Base exception for service errors"""
+    pass
+
+
+class ServicePermissionError(ServiceError):
+    """Raised when user doesn't have permission"""
+    pass

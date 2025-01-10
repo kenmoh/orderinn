@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     HOTEL_OWNER: str
     LAUNDRY_ATTENDANT: str
     ENCRYPTION_KEY: str
+    USERNAME: str
+    PASSWORD: str
     # ENCRYPTION_KEY: str
     # REDIS_URL: str
     # MAIL_USERNAME: str

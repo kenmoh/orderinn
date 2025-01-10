@@ -1,25 +1,8 @@
+import datetime
 from decimal import Decimal
 from enum import Enum
 import uuid
 from pydantic import BaseModel
-
-"""
-Order structure
-class Item(BaseModel):
-    id: int
-    name: str
-    price: Decimal
-
-
-class ItemSchema(BaseModel):
-    item: Item
-    quantity: int
-    total_cost: Decimal
-
-
-class OrderSchema(BaseModel):
-    items: list[ItemSchema]
-"""
 
 
 class UnitType(str, Enum):
@@ -29,9 +12,9 @@ class UnitType(str, Enum):
 
 
 class ItemCategory(str, Enum):
-    FOOD = "FOOD"
-    BEVERAGE = "BEVERAGE"
-    LINEN = "LINEN"
+    FOOD = "food"
+    BEVERAGE = "beverage"
+    LINEN = "linen"
 
 
 class CreateItemSchema(BaseModel):
@@ -41,19 +24,29 @@ class CreateItemSchema(BaseModel):
     quantity: int | None = None
     unit: UnitType | None = None
     category: ItemCategory
-    company_id: uuid.UUID
     reorder_point: int | None
     image_url: str | None = None
 
 
 class UpdateItemSchema(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    price: Decimal | None = None
+    unit: UnitType | None = None
+    category: ItemCategory | None = None
+    reorder_point: int | None = None
+    image_url: str | None = None
+
+
+class InventoryReturnSchema(BaseModel):
+    company_id: str
+    item_id: int
     name: str
-    description: str
+    quantity: int
     price: Decimal
     unit: UnitType
     category: ItemCategory
-    reorder_point: int
-    image_url: str
+    updated_at: datetime.datetime
 
 
 class AddStockSchema(BaseModel):

@@ -6,39 +6,56 @@ from sqlalchemy.orm import selectinload
 
 from ..models.models import Item, Inventory, Stock
 from ..schema.item_schemas import AddStockSchema, CreateItemSchema, UpdateItemSchema
-from ..utils.utils import UserRole, Permission, Resource
+from ..utils.utils import ServicePermissionError, UserRole, Permission, Resource
 
 
 class ItemService:
     def check_authorization_for_item(
-        self, role: str, permission: str, resource: str
+        self, role: UserRole, permissions: list[Permission], resources: list[Resource]
     ) -> bool:
         """
         Check if user has required role and permission for a resource
         Returns True if authorized, False otherwise
         """
+        # return (
+        #     role == UserRole.HOTEL_OWNER
+        #     and permissions == Permission.CREATE
+        #     and resources == Resource.ITEM
+        # )
+
+        required_role = 'UserRole.HOTEL_OWNER'
+        required_resource = ['Resource.PAYMENT', 'Resource.USER',
+                             'Resource.INVENTORY', 'Resource.STOCK', 'Resource.ITEM', 'Resource.ORDER']
+
+        required_permission = [
+            'Permission.READ', 'Permission.DELETE', 'Permission.CREATE', 'Permission.UPDATE']
+
+        print(role == required_role)
+        print(resources == required_resource)
+        print(permissions == required_permission)
+
+        # Check if user has the required role, permission and resource
         return (
-            role == UserRole.HOTEL_OWNER
-            and permission == Permission.CREATE
-            and resource == Resource.ITEM
+            role == required_role and (permissions == required_permission) and (
+                resources == required_resource)
         )
 
     async def get_items(self, company_id: uuid.UUID, db: AsyncSession):
         stmt = select(Item).where(Item.company_id == company_id)
         items = await db.execute(stmt)
-        return await items.scalars().all()
+        return items.scalars().all()
 
-    async def get_item(self, item_id: uuid.UUID, db: AsyncSession):
+    async def get_item(self, item_id: int, db: AsyncSession):
         stmt = select(Item).where(Item.id == item_id)
-        items = await db.execute(stmt)
-        return await items.scalar_one_or_none()
+        item = await db.execute(stmt)
+        return item.scalar_one_or_none()
 
     async def create_item_with_inventory(
         self,
         company_id: uuid.UUID,
         role: str,
-        resource: str,
-        permission: str,
+        resources: str,
+        permissions: str,
         item: CreateItemSchema,
         db: AsyncSession,
     ):
@@ -48,8 +65,8 @@ class ItemService:
         Args:
             company_id (uuid.UUID): The UUID of the company.
             role (str): The role of the user attempting to create the item.
-            resource (str): The resource being accessed.
-            permission (str): The permission level required to create the item.
+            resources (str): The resource being accessed.
+            permissions (str): The permission level required to create the item.
             item (CreateItemSchema): The schema containing item details.
             db (AsyncSession): The asynchronous database session.
 
@@ -62,9 +79,9 @@ class ItemService:
         """
 
         if not self.check_authorization_for_item(
-            role=role, resource=resource, permission=permission
+            role=role, resources=resources, permissions=permissions
         ):
-            return "Permission denied!"
+            raise ServicePermissionError("Permission denied!")
 
         try:
             async with db.begin():
@@ -74,6 +91,7 @@ class ItemService:
                     category=item.category,
                     description=item.description,
                     price=item.price,
+                    # quantity=item.quantity,
                     unit=item.unit,
                     reorder_point=item.reorder_point,
                     image_url=item.image_url,
@@ -82,7 +100,8 @@ class ItemService:
                 db.add(new_item)
                 await db.flush()
 
-                item_inventory = Inventory(item_id=new_item.id, quantity=0)
+                item_inventory = Inventory(
+                    item_id=new_item.id, quantity=0)
 
                 db.add(item_inventory)
                 await db.commit()
@@ -95,10 +114,9 @@ class ItemService:
             raise ValueError(str(e))
 
     async def update_item(
-
         self,
         item_id: int,
-        company_id: uuid.UUID,
+        company_id: str,
         role: str,
         resource: str,
         permission: str,
@@ -123,15 +141,15 @@ class ItemService:
         """
         stmt = select(Item).where(Item.id == item_id)
         result = await db.execute(stmt)
-        db_item: Item = await result.scalar_one_or_none()
+        db_item: Item = result.scalar_one_or_none()
 
         if not self.check_authorization_for_item(
             role=role, resource=resource, permission=permission
         ):
-            return "Permission denied!"
+            raise ServicePermissionError("Permission denied!")
 
         if db_item.company_id != company_id:
-            return "You can only update your item!"
+            raise ServicePermissionError("You can only update your item!")
 
         db_item.category = item.category
         db_item.name = item.name
@@ -149,7 +167,7 @@ class ItemService:
     async def delete_item(
         self,
         item_id: int,
-        company_id: uuid.UUID,
+        company_id: str,
         role: str,
         resource: str,
         permission: str,
@@ -162,10 +180,10 @@ class ItemService:
         if not self.check_authorization_for_item(
             role=role, resource=resource, permission=permission
         ):
-            return "Permission denied!"
+            raise ServicePermissionError("Permission!")
 
         if db_item.company_id != company_id:
-            return "You can only update your item!"
+            raise ServicePermissionError("You can only delete your item!")
 
         if db_item:
             await db.delete(db_item)
@@ -173,61 +191,19 @@ class ItemService:
 
 
 class StockAndInventoryService:
-
-    async def get_inventories(self, company_id: uuid.UUID, db: AsyncSession):
+    async def get_inventories(self, company_id: str, db: AsyncSession):
         """
-    Retrieve all inventories with associated item details for a specific company.
-
-    Args:
-        company_id (uuid.UUID): The unique identifier of the company
-        db (AsyncSession): The database session for executing queries
-
-    Returns:
-        list[dict]: A list of dictionaries containing inventory details:
-            - item_id (UUID): The unique identifier of the item
-            - quantity (int): Current stock quantity
-            - company_id (UUID): The company identifier
-            - name (str): Item name
-            - price (float): Item price
-            - unit (str): Unit of measurement
-            - category (str): Item category
-            - updated_at (datetime): Last update timestamp
-
-    """
-
-        stmt = select(Inventory).join(Item).where(
-            Item.company_id == company_id).options(selectinload(Inventory.item))
-        inventories = await db.execute(stmt)
-        company_inventories: Inventory = await inventories.unique().scalars().all()
-
-        return [
-            {
-                'id': inventory.id,
-                'item_id': inventory.item_id,
-                'quantity': inventory.quantity,
-                'company_id': inventory.item.company_id,
-                'name': inventory.item.name,
-                'price': inventory.item.price,
-                'unit': inventory.item.unit,
-                'category': inventory.item.category,
-                'updated_at': inventory.updated_at,
-            }
-            for inventory in company_inventories
-        ]
-
-    async def get_inventory(self, inventory_id: uuid.UUID, db: AsyncSession) -> dict | None:
-        """
-        Retrieve a single inventory with associated item details.
+        Retrieve all inventories with associated item details for a specific company.
 
         Args:
-            inventory_id (uuid.UUID): The unique identifier of the inventory
+            company_id (str): The unique identifier of the company
             db (AsyncSession): The database session for executing queries
 
         Returns:
-            dict | None: Dictionary containing inventory details or None if not found:
-                - item_id (UUID): The unique identifier of the item
+            list[dict]: A list of dictionaries containing inventory details:
+                - item_id (int): The unique identifier of the item
                 - quantity (int): Current stock quantity
-                - company_id (UUID): The company identifier
+                - company_id (str): The company identifier
                 - name (str): Item name
                 - price (float): Item price
                 - unit (str): Unit of measurement
@@ -235,29 +211,77 @@ class StockAndInventoryService:
                 - updated_at (datetime): Last update timestamp
 
         """
+
         stmt = (
             select(Inventory)
             .join(Item)
-            .where(Inventory.id == inventory_id)
+            .where(Item.company_id == company_id)
+            .options(selectinload(Inventory.item))
+        )
+        inventories = await db.execute(stmt)
+        company_inventories: Inventory = inventories.unique().scalars().all()
+
+        return [
+            {
+                # "id": inventory.id,
+                "item_id": inventory.item_id,
+                "quantity": inventory.quantity,
+                "company_id": inventory.item.company_id,
+                "name": inventory.item.name,
+                "price": inventory.item.price,
+                "unit": inventory.item.unit,
+                "category": inventory.item.category,
+                "updated_at": inventory.updated_at,
+            }
+            for inventory in company_inventories
+        ]
+
+    async def get_inventory(
+        self, inventory_id: str, company_id: str, db: AsyncSession
+    ) -> dict | None:
+        """
+        Retrieve a single inventory with associated item details.
+
+        Args:
+            inventory_id (str): The unique identifier of the inventory
+            db (AsyncSession): The database session for executing queries
+
+        Returns:
+            dict | None: Dictionary containing inventory details or None if not found:
+                - item_id (int): The unique identifier of the item
+                - quantity (int): Current stock quantity
+                - company_id (str): The company identifier
+                - name (str): Item name
+                - price (float): Item price
+                - unit (str): Unit of measurement
+                - category (str): Item category
+                - updated_at (datetime): Last update timestamp
+
+        """
+
+        stmt = (
+            select(Inventory)
+            .join(Item)
+            .where(Inventory.id == inventory_id, Item.company_id == company_id)
             .options(selectinload(Inventory.item))
         )
 
         result = await db.execute(stmt)
-        inventory = await result.unique().scalar_one_or_none()
+        inventory = result.unique().scalar_one_or_none()
 
         if not inventory:
             return None
 
         return {
-            'id': inventory.id,
-            'item_id': inventory.item_id,
-            'quantity': inventory.quantity,
-            'company_id': inventory.item.company_id,
-            'name': inventory.item.name,
-            'price': inventory.item.price,
-            'unit': inventory.item.unit,
-            'category': inventory.item.category,
-            'updated_at': inventory.updated_at,
+            # "id": inventory.id,
+            "item_id": inventory.item_id,
+            "quantity": inventory.quantity,
+            "company_id": inventory.item.company_id,
+            "name": inventory.item.name,
+            "price": inventory.item.price,
+            "unit": inventory.item.unit,
+            "category": inventory.item.category,
+            "updated_at": inventory.updated_at,
         }
 
     def check_authorization_for_stock(
@@ -281,7 +305,6 @@ class StockAndInventoryService:
         )
 
     async def add_new_stock(
-
         self,
         inventory_id: int,
         user_id: uuid.UUID,
@@ -311,18 +334,17 @@ class StockAndInventoryService:
 
         """
 
-        if not self.check_authorization_for_stock(role=role, resource=resource, permission=permission):
-            return 'Permission denied!'
+        if not self.check_authorization_for_stock(
+            role=role, resource=resource, permission=permission
+        ):
+            raise ServicePermissionError('Permission denied!')
 
         try:
             async with db.begin():
                 stmt = (
                     select(Inventory)
                     .join(Item)
-                    .where(
-                        Inventory.id == inventory_id,
-                        Item.company_id == company_id
-                    )
+                    .where(Inventory.id == inventory_id, Item.company_id == company_id)
                 )
                 inventory = await db.execute(stmt)
                 inventory = await inventory.scalar_one_or_none()
@@ -350,17 +372,16 @@ class StockAndInventoryService:
                     "quantity": new_stock.quantity,
                     "inventory_id": new_stock.inventory_id,
                     "notes": new_stock.notes,
-                    "created_at": new_stock.created_at
+                    "created_at": new_stock.created_at,
                 }
 
         except Exception as e:
             raise ValueError(str(e))
 
     async def update_stock(
-
         self,
         inventory_id: int,
-        user_id: uuid.UUID,
+        user_id: int,
         stock_id: int,
         role: str,
         resource: str,
@@ -373,7 +394,7 @@ class StockAndInventoryService:
 
         Args:
             inventory_id (int): The ID of the inventory to update.
-            user_id (uuid.UUID): The UUID of the user performing the update.
+            user_id (str): The UUID of the user performing the update.
             stodk_id (int): The ID of the stock to update.
             role (str): The role of the user.
             resource (str): The resource being accessed.
@@ -386,12 +407,13 @@ class StockAndInventoryService:
             str: 'Permission denied!' if the user does not have the required permissions.
         """
 
-        if not self.check_authorization_for_stock(role=role, resource=resource, permission=permission):
-            return 'Permission denied!'
+        if not self.check_authorization_for_stock(
+            role=role, resource=resource, permission=permission
+        ):
+            return "Permission denied!"
 
         try:
             async with db.begin():
-
                 # Get stock and inventory in a single query
                 stmt = (
                     select(Stock)
@@ -399,7 +421,7 @@ class StockAndInventoryService:
                     .where(
                         Stock.id == stock_id,
                         Stock.user_id == user_id,
-                        Stock.inventory_id == inventory_id
+                        Stock.inventory_id == inventory_id,
                     )
                 )
                 result = await db.execute(stmt)
@@ -428,7 +450,7 @@ class StockAndInventoryService:
                     "id": existing_stock.id,
                     "quantity": existing_stock.quantity,
                     "inventory_id": existing_stock.inventory_id,
-                    "updated_at": existing_stock.updated_at
+                    "updated_at": existing_stock.updated_at,
                 }
 
         except Exception as e:

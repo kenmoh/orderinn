@@ -116,8 +116,7 @@ async def init_role_permissions(session: AsyncSession):
                     )
                     session.add(role_permission)
                     print(
-                        f"Added permission: {
-                          role} - {resource} - {permission}"
+                        f"Added permission: {role} - {resource} - {permission}"
                     )
     await session.commit()
     print("Role permissions initialized.")
@@ -130,3 +129,12 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+{
+    "id": "user_uuid",
+    "role": "HOTEL_OWNER",
+    "company_id": "company_uuid",
+    "resource": ["USER"],
+    "permissions": ["CREATE", "READ", "UPDATE", "DELETE"]
+}

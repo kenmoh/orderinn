@@ -1,0 +1,16 @@
+[project]
+name = "order"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.14.0",
+    "asyncpg>=0.30.0",
+    "cryptography>=44.0.0",
+    "fastapi[standard]>=0.115.6",
+    "psycopg2-binary>=2.9.10",
+    "pydantic-settings>=2.7.1",
+    "requests>=2.32.3",
+    "sqlmodel",
+]

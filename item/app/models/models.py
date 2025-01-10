@@ -12,7 +12,7 @@ class ItemBase(SQLModel):
     name: str
     description: Optional[str] = None
     price: Decimal
-    quantity: int
+    # quantity: int
     unit: UnitType | None = None
     image_url: str | None = None
     category: ItemCategory
@@ -20,16 +20,14 @@ class ItemBase(SQLModel):
 
 class Item(ItemBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    company_id: uuid.UUID
-    reorder_point: int | None = Field(default=10)
+    company_id: str
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
     # Relationships
     inventory: "Inventory" = Relationship(
         back_populates="item",
-        sa_relationship_kwargs={
-            "cascade": "all, delete-orphan", "uselist": False},
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "uselist": False},
     )
 
 
@@ -37,6 +35,8 @@ class Inventory(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     item_id: int = Field(foreign_key="item.id", unique=True)
     quantity: int = Field(default=0)
+    reorder_point: int | None = Field(default=10)
+    created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
     # Relationships

@@ -1,0 +1,66 @@
+version: "3.8"
+
+services:
+  item_api:
+    build:
+      context: ./item
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    env_file:
+      - .env
+    command: fastapi dev
+    container_name: item-api-container
+    image: item-api-image
+
+  user_api:
+    build:
+      context: ./user
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    env_file:
+      - .env
+    command: fastapi dev
+    container_name: item-api-container
+    image: item-api-image
+
+  order_api:
+    build:
+      context: ./order
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    env_file:
+      - .env
+    command: fastapi dev
+    container_name: item-api-container
+    image: item-api-image
+
+  api_gateway:
+    build:
+      context: ./api_gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    env_file:
+      - .env
+    command: fastapi dev
+    container_name: item-api-container
+    image: item-api-image

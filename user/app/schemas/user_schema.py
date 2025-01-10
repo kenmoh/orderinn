@@ -1,6 +1,7 @@
 import datetime
 from enum import Enum
 import uuid
+from beanie import PydanticObjectId
 from pydantic import BaseModel, EmailStr, Field
 
 from ..utils.utils import UserRole
@@ -22,15 +23,18 @@ class CreateUserSchema(BaseModel):
     password: str
 
 
-class CreateStaffUserSchema(CreateUserSchema):
-    role: UserRole
+class CreateGuestUserSchema(BaseModel):
+    email: EmailStr
+    full_name: str
+    password: str
 
 
 class UserReturnSchema(BaseModel):
-    id: uuid.UUID
-    company_id: uuid.UUID | None = None
+    id: PydanticObjectId
+    company_id: PydanticObjectId | None = None
     email: EmailStr
-    company_name: str
+    company_name: str | None
+    full_name: str | None
     is_subscribed: bool
     role: UserRole
     created_at: datetime.datetime
@@ -47,13 +51,31 @@ class ProfileSchema(BaseModel):
 class ProfileReturnSchema(BaseModel):
     address: str
     cac_reg_number: str
-    payment_gateway: PaymentGateway
+    # payment_gateway: PaymentGateway
 
 
 class GenerateRoomQRCodeSchema(BaseModel):
     room_numbers: str = Field(
         ..., description="Comma-separated room numbers", example="101,102,103,104"
     )
+    color: str = Field(
+        "black",
+        description="Color of the QR code(color name or hex value black or #cccfff)",
+        example="black",
+    )
 
     class Config:
-        json_schema_extra = {"example": {"room_numbers": "101,102,103,104"}}
+        json_schema_extra = {
+            "example": {"room_numbers": "101,102,103,104", "color": "black"}
+        }
+
+
+class OutletType(str, Enum):
+    ROOM = "room"
+    RESTAURANT = "restaurant"
+
+
+class SubscriptionType(str, Enum):
+    BASIC = "basic"
+    PRO = "pro"
+    ENTERPRISE = "enterprise"

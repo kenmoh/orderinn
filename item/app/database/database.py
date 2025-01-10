@@ -18,7 +18,7 @@ SessionLocal = async_sessionmaker(
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
-        stmt = text("SELECT 'Hello';")
+        stmt = text("SELECT 'Hello from Item db';")
         result = await conn.execute(stmt)
         print(f"Database connection test result: {result.all()}")
 

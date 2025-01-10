@@ -1,19 +1,32 @@
-from typing import AsyncGenerator
+
+import urllib.parse
+from motor.motor_asyncio import AsyncIOMotorClient
+from beanie import init_beanie
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import SQLModel, text
+
+from ..models.user_model import Outlet, QRCode, User
 
 from ..config import get_settings
 
 
 settings = get_settings()
 DATABASE_URL = settings.DATABASE_URL
+USERNAME = urllib.parse.quote_plus(settings.USERNAME)
+PASSWORD = urllib.parse.quote_plus(settings.PASSWORD)
 
 
 engine = create_async_engine(url=settings.DATABASE_URL, echo=True)
 SessionLocal = async_sessionmaker(
     bind=engine, class_=AsyncSession, expire_on_commit=False
 )
+
+
+async def init_user_db():
+    client = AsyncIOMotorClient(
+        f"mongodb+srv://{USERNAME}:{PASSWORD}@orderinn.p98d4.mongodb.net/")
+    await init_beanie(database=client.orderinn, document_models=[User, QRCode, Outlet])
 
 
 async def init_db():

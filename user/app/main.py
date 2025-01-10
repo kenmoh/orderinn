@@ -3,15 +3,16 @@ from fastapi import FastAPI
 
 from ..app.routes import auth_router
 from ..app.routes import user_routes
-from ..app.database.database import init_db
+from ..app.database.database import init_db, init_user_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Server starting...")
-    await init_db()
+    await init_user_db()
 
     yield
+    init_user_db().close()
     print("Print server stopped.")
 
 
