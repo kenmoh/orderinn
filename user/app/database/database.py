@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import SQLModel, text
 
-from ..models.user_model import Outlet, QRCode, User
+from ..models.user_model import Outlet, QRCode, User, Profile
 
 from ..config import get_settings
 

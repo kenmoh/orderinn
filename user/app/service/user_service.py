@@ -1,16 +1,19 @@
+from io import BytesIO
 import tempfile
 from pathlib import Path
 from unittest import result
 import zipfile
-from beanie import PydanticObjectId
+from beanie import PydanticObjectId, WriteRules
+import httpx
 import qrcode
-import uuid
+from PIL import Image
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from cryptography.fernet import Fernet
 
+import api_gateway
 from user.app.utils.utils import ServicePermissionError
 
 from ..utils.auth import hash_password
@@ -19,6 +22,7 @@ from ..models.users import Profile, RolePermission, User, UserRole, UserRolePerm
 from ..schemas.user_schema import (
     CreateGuestUserSchema,
     CreateUserSchema,
+    GatewaySchema,
     GenerateRoomQRCodeSchema,
     ProfileSchema, OutletType, SubscriptionType,
 )
@@ -31,6 +35,7 @@ cipher_suite = Fernet(ENCRYPTION_KEY)
 
 
 class APIGatewayCredentialsService:
+
     @staticmethod
     def encrypt_value(value: str) -> str:
         """Encrypt a string value"""
@@ -49,17 +54,9 @@ class APIGatewayCredentialsService:
 
 
 class UserService:
-    # async def get_users(self, db: AsyncSession) -> List[User]:
-    #     stmt = select(User).order_by(User.created_at.desc())
-    #     result = await db.execute(stmt)
-    #     return result.scalars().all()
+
     async def get_users(self) -> List[User]:
         return await user_model.User.find().to_list()
-
-    # async def get_roles(self, db: AsyncSession, role: UserRole = None):
-    #     stmt = select(RolePermission).where(RolePermission.role == role)
-    #     result = await db.execute(stmt)
-    #     return result.scalars().all()
 
     async def get_user(self, user_id: PydanticObjectId) -> User:
 
@@ -69,27 +66,9 @@ class UserService:
             raise ServicePermissionError(f'User with {user_id} not found!')
 
         return user
-    # async def get_user(self, user_id: int, db: AsyncSession) -> User:
-    #     stmt = select(User).where(User.id == user_id)
-    #     result = await db.execute(stmt)
-    #     return result.scalar_one_or_none()
 
-    # async def check_unique_fields(
-    #     self, email: str, company_name: str, db: AsyncSession
-    # ) -> bool:
-    #     # Check email
-    #     email_stmt = select(User).where(User.email == email)
-    #     email_result = await db.execute(email_stmt)
-    #     if email_result.scalar_one_or_none():
-    #         return "User with this email already exists"
-
-    #     # Check company name
-    #     name_stmt = select(User).where(User.company_name == company_name)
-    #     name_result = await db.execute(name_stmt)
-    #     if name_result.scalar_one_or_none():
-    #         return "User with this name already exists"
     async def check_unique_fields(
-        self, email: str, company_name: str | None = None
+        self, email: str, company_name: str
     ) -> bool:
 
         # Check email
@@ -103,9 +82,20 @@ class UserService:
         name = await user_model.User.find(
             user_model.User.company_name == company_name).first_or_none()
 
-        if name:
+        if name is not None:
             raise ServicePermissionError(
                 "User with this company name already exists.")
+
+    async def check_unique_email_staff(
+        self, email: str
+    ) -> bool:
+
+        # Check email
+        user = await user_model.User.find(
+            user_model.User.email == email).first_or_none()
+        if user:
+            raise ServicePermissionError(
+                "User with this email already exists.")
 
     async def create_company_user(self, data: CreateUserSchema) -> user_model.User:
         existing_user = await self.check_unique_fields(
@@ -137,74 +127,8 @@ class UserService:
 
         return new_user
 
-    # async def create_hotel_user(
-    #     self, user_data: CreateUserSchema, db: AsyncSession
-    # ) -> User:
-    #     existing_user = await self.check_unique_fields(
-    #         email=user_data.email, company_name=user_data.company_name, db=db
-    #     )
-
-    #     if existing_user:
-    #         return existing_user
-
-    #     new_user = User(
-    #         email=user_data.email,
-    #         company_name=user_data.company_name,
-    #         password=hash_password(user_data.password),
-    #         role=UserRole.HOTEL_OWNER,
-    #     )
-
-    #     db.add(new_user)
-    #     await db.commit()
-    #     await db.refresh(new_user)
-
-        # role_permissions = await self.get_roles(db, role=UserRole.HOTEL_OWNER)
-
-        # for role_permission in role_permissions:
-        #     user_role_permission = UserRolePermission(
-        #         user_id=new_user.id, role_permission_id=role_permission.id
-        #     )
-        #     db.add(user_role_permission)
-
-        # await db.commit()
-        # await db.refresh(new_user)
-        # return new_user
-
-    # async def create_guest_user(
-    #     self, user_data: CreateUserSchema, db: AsyncSession
-    # ) -> User:
-    #     existing_user = await self.check_unique_fields(
-    #         email=user_data.email, company_name=user_data.company_name, db=db
-    #     )
-
-    #     if existing_user:
-    #         return existing_user
-
-    #     new_user = User(
-    #         email=user_data.email,
-    #         company_name=user_data.company_name,
-    #         password=hash_password(user_data.password),
-    #         role=UserRole.GUEST,
-    #     )
-
-    #     db.add(new_user)
-    #     await db.commit()
-    #     await db.refresh(new_user)
-
-    #     # Assign role permissions
-    #     role_permissions = await self.get_roles(db, role=UserRole.GUEST)
-
-    #     for role_permission in role_permissions:
-    #         user_role_permission = UserRolePermission(
-    #             user_id=new_user.id, role_permission_id=role_permission.id
-    #         )
-    #         db.add(user_role_permission)
-
-    #     await db.commit()
-    #     await db.refresh(new_user)
-    #     return new_user
     async def create_staff(self, current_user: user_model.User, data: CreateGuestUserSchema) -> user_model.User:
-        existing_user = await self.check_unique_fields(email=data.email)
+        existing_user = await self.check_unique_email_staff(email=data.email)
         if existing_user:
             return existing_user
 
@@ -212,168 +136,118 @@ class UserService:
             raise ServicePermissionError(
                 "You are not allowed to perform this action")
 
-        staff = await user_model.User(
+        user = await user_model.User.find(
+            user_model.User.id == current_user.id).first_or_none()
+
+        if user is None:
+            raise ServicePermissionError(
+                "Invalid user.")
+
+        user.staff.append(user_model.User(
             company_id=current_user.id,
             full_name=data.full_name,
             email=data.email,
-            password=hash_password(data.password)
+            password=hash_password(data.password),
+        ))
 
-        )
+        await user.save(link_rule=WriteRules.WRITE)
 
-        await staff.save()
-
-        return staff
-
-    # async def create_staff(
-    #     self,
-    #     company_id: uuid.UUID,
-    #     current_user: User,
-    #     user_data: CreateStaffUserSchema,
-    #     db: AsyncSession,
-    # ) -> User:
-    #     # verify hotel owner
-    #     if current_user.id != company_id and current_user.role != UserRole.HOTEL_OWNER:
-    #         return "You are not allowed to perform this action"
-
-    #     # Verify valid staff role
-    #     valid_staff_roles = [
-    #         UserRole.MANAGER,
-    #         UserRole.CHEF,
-    #         UserRole.WAITER,
-    #         UserRole.LAUNDRY_ATTENDANT,
-    #     ]
-    #     if user_data.role not in valid_staff_roles:
-    #         return "Invalid staff role"
-
-    #     new_staff = User(
-    #         email=user_data.email,
-    #         company_name=user_data.company_name,
-    #         password=hash_password(user_data.password),
-    #         role=user_data.role,
-    #         company_id=company_id,
-    #     )
-
-    #     db.add(new_staff)
-    #     await db.commit()
-    #     await db.refresh(new_staff)
-
-    #     # Assign role permissions
-    #     role_permissions = await self.get_roles(db, role=new_staff.role)
-
-    #     for role_permission in role_permissions:
-    #         user_role_permission = UserRolePermission(
-    #             user_id=new_staff.id, role_permission_id=role_permission.id
-    #         )
-    #         db.add(user_role_permission)
-
-    #     await db.commit()
-    #     await db.refresh(new_staff)
-    #     return new_staff
+        return user.staff[-1]
 
     async def create_profile(
         self,
-        company_id: uuid.UUID,
         data: ProfileSchema,
-        db: AsyncSession,
-        current_user: User,
+        current_user: user_model.User,
     ):
-        if current_user.id != company_id and current_user.role != UserRole.HOTEL_OWNER:
-            return "You are not allowed to perform this action"
+        if current_user.role != UserRole.HOTEL_OWNER:
+            raise ServicePermissionError(
+                "You are not allowed to perform this action")
 
-        try:
-            user_profile = Profile(
-                address=data.address,
-                cac_reg_number=data.cac_reg_number,
-                payment_gateway=data.payment_gateway,
-                payment_gateway_key=APIGatewayCredentialsService.encrypt_value(
-                    data.api_key
-                ),
-                payment_gateway_secret=APIGatewayCredentialsService.encrypt_value(
-                    data.api_secret
-                ),
-                user_id=current_user.id,
-            )
+        user = await user_model.User.find(user_model.User.id == current_user.id).first_or_none()
 
-            db.add(user_profile)
-            await db.commit()
-            await db.refresh(user_profile)
-            return user_profile
-        except Exception as e:
-            db.rollback()
-            return e
+        if user is None:
+            raise ServicePermissionError(
+                "Invalid user")
 
-    async def update_profile(
-        self,
-        company_id: uuid.UUID,
-        data: ProfileSchema,
-        db: AsyncSession,
-        current_user: User,
-    ):
-        if current_user.id != company_id and current_user.role != UserRole.HOTEL_OWNER:
-            return "You are not allowed to perform this action"
-
-        user_profile = Profile(
+        profile = user_model.Profile(
             address=data.address,
             cac_reg_number=data.cac_reg_number,
-            payment_gateway=data.payment_gateway,
-            payment_gateway_key=APIGatewayCredentialsService.encrypt_value(
-                data.api_key
-            ),
-            payment_gateway_secret=APIGatewayCredentialsService.encrypt_value(
-                data.api_secret
-            ),
-            user_id=current_user.id,
+            openning_hours=data.openning_hours,
+            phone_number=data.phone_number,
+            logo_url=data.logo_url
+
         )
 
-        db.add(user_profile)
-        await db.commit()
-        await db.refresh(user_profile)
-        return user_profile
+        user.profile = profile
+        await user.save()
 
-    async def delete_user(self, user_id: int, db: AsyncSession):
-        user = await self.get_user(user_id, db)
-        if user:
-            await db.delete(user)
-            await db.commit()
+        return user.profile
+
+    async def add_payment_gateway(self, data: GatewaySchema, current_user: user_model.User):
+        user = await user_model.User.find(user_model.User.id == current_user.id).first_or_none()
+
+        if not user or user.id != current_user.id:
+            raise ServicePermissionError('Invalid user.')
+
+        if current_user.role != UserRole.HOTEL_OWNER:
+            raise ServicePermissionError('Permission denied.')
+
+        gateway_provider = user_model.PaymentGateway(
+            payment_gateway_key=APIGatewayCredentialsService.encrypt_value(
+                data.payment_gateway_key),
+            payment_gateway_secret=APIGatewayCredentialsService.encrypt_value(
+                data.payment_gateway_secret),
+            payment_gateway_provider=data.payment_gateway_provider
+
+        )
+
+        user.payment_gateway = gateway_provider
+        await user.save()
+
+        return user.payment_gateway
 
 
 class CreateRoomService:
     async def generate_rooms_qrcode(
         self,
-        company_id: uuid.UUID,
+        company_id: PydanticObjectId,
         outlet_type: OutletType,
         room_no: GenerateRoomQRCodeSchema,
-        current_user: User,
-        db: AsyncSession,
-        base_url: str = "https://orderinn.com/room",
+        current_user: user_model.User,
+        base_url: str = "https://orderinn.com",
     ) -> str:
         """
         Generate QR codes for room numbers and return zip file path
 
         Args:
-            company_id: UUID of the company
-            room_no: List(comma-separated strings) of room numbers to generate QR codes for
+            company_id: PydanticObjectId of the company
+            room_no: comma-separated strings of room numbers to generate QR codes for
             base_url: Base URL for QR code links
 
         Returns:
             str: Path to zip file containing QR codes
         """
 
+        user = await user_model.User.find(user_model.User.id == current_user.id).first_or_none()
+
+        if not user:
+            raise ServicePermissionError('Invalid user.')
+
         if (
             current_user.role != UserRole.HOTEL_OWNER
             or current_user.role != UserRole.MANAGER
         ) and current_user.id != company_id:
-            return "You are not allowed to perform this action"
+            return ServicePermissionError("You are not allowed to perform this action")
 
-        qrcodes = QRCode(
+        user.qrcodes.append(user_model.QRCode(
             company_id=company_id,
             room_or_table_numbers=room_no.room_numbers,
-            color=room_no.color,
-        )
+            fill_color=room_no.fill_color,
+            back_color=room_no.back_color,
+            outlet_type=outlet_type
+        ))
 
-        db.add(qrcodes)
-        await db.commit()
-        db.refresh(qrcodes)
+        await user.save(link_rule=WriteRules.WRITE)
 
         temp_dir = Path("room-qrcodes")
         temp_dir.mkdir(exist_ok=True)
@@ -386,25 +260,46 @@ class CreateRoomService:
                 if outlet_type == OutletType.ROOM:
                     room_url = f"""{base_url}/{company_id}
                                 ?room={room}
-                                &sk={current_user.profile.payment_gateway}
-                                &payment_provider={current_user.profile.payment_gateway_secret}"""
+                                &sk={user.payment_gateway.payment_gateway_secret}
+                                &payment_provider={user.payment_gateway.payment_gateway_provider}"""
                 elif outlet_type == OutletType.RESTAURANT:
                     room_url = f"""{base_url}/{company_id}
                                 ?table={room}
-                                &sk={current_user.profile.payment_gateway}
-                                &payment_provider={current_user.profile.payment_gateway_secret}"""
+                                &sk={user.payment_gateway.payment_gateway_secret}
+                                &payment_provider={user.payment_gateway.payment_gateway_provider}"""
 
                 qr = qrcode.QRCode(
                     version=1,
-                    error_correction=qrcode.constants.ERROR_CORRECT_L,
-                    box_size=12,
+                    error_correction=qrcode.constants.ERROR_CORRECT_H,
+                    box_size=8,
                     border=2,
                 )
                 qr.add_data(room_url)
                 qr.make(fit=True)
 
                 qr_image = qr.make_image(
-                    fill_color=room_no.color, back_color="white")
+                    fill_color=room_no.fill_color, back_color=room_no.back_color).convert("RGB")
+
+                # Open and resize the logo
+                logo_url = user.profile.logo_url
+
+                if logo_url and logo_url.startswith("http://") or logo_url.startswith("https://"):
+                    try:
+                        # Load the logo (URL or local path)
+                        response = await httpx.get(logo_url)
+                        logo = Image.open(BytesIO(response.content))
+                    except Exception as e:
+                        raise ServicePermissionError('Unable to open logo')
+                logo_size = min(qr_image.size) // 4
+                logo = logo.resize((logo_size, logo_size), Image.ANTIALIAS)
+
+                # Calculate logo position to center it
+                x = (qr_image.size[0] - logo_size) // 2
+                y = (qr_image.size[1] - logo_size) // 2
+
+                # Paste the logo in the center of the QR code
+                # Use mask for transparency
+                qr_image.paste(logo, (x, y), mask=logo)
 
                 # Save QR code to temporary file
                 temp_file = temp_dir / f"room_{room}.png"
@@ -459,6 +354,7 @@ class S3Handler:
 
 
 class QRCodeService:
+
     def __init__(self):
         self.s3_handler = S3Handler()
         self.temp_dir = Path("temp-qrcodes")
@@ -567,7 +463,8 @@ class QRCodeService:
                 qrcodes = QRCode(
                     company_id=current_user.id,
                     room_or_table_numbers=room_no.room_numbers,
-                    color=room_no.color,
+                    back_color=room_no.back_color,
+                    fill_color=room_no.fill_color,
                     outlet_type=outlet_type,
                     download_link=download_link
                 )

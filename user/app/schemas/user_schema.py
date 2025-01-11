@@ -4,7 +4,7 @@ import uuid
 from beanie import PydanticObjectId
 from pydantic import BaseModel, EmailStr, Field
 
-from ..utils.utils import UserRole
+from ..utils.utils import UserRole, Resource, Permission
 
 
 class PaymentGateway(str, Enum):
@@ -29,6 +29,19 @@ class CreateGuestUserSchema(BaseModel):
     password: str
 
 
+class RolePermission(BaseModel):
+    """
+    Defines what permissions each role has for different resources.
+    This is embedded in the User document.
+    """
+    role: UserRole
+    resource: Resource
+    permission: Permission
+
+    class Settings:
+        name = "role_permissions"
+
+
 class UserReturnSchema(BaseModel):
     id: PydanticObjectId
     company_id: PydanticObjectId | None = None
@@ -36,16 +49,31 @@ class UserReturnSchema(BaseModel):
     company_name: str | None
     full_name: str | None
     is_subscribed: bool
-    role: UserRole
+    role: UserRole | None = None
+    created_at: datetime.datetime
+
+
+class GuestReturnSchema(BaseModel):
+    id: PydanticObjectId
+    email: EmailStr
+    full_name: str
+    role: UserRole | None = None
+    role_permissions: list[RolePermission]
     created_at: datetime.datetime
 
 
 class ProfileSchema(BaseModel):
-    api_key: str
-    api_secret: str
     address: str
     cac_reg_number: str
-    payment_gateway: PaymentGateway
+    phone_number: str
+    openning_hours: str
+    logo_url: str | None = None
+
+
+class GatewaySchema(BaseModel):
+    payment_gateway_key: str
+    payment_gateway_secret: str
+    payment_gateway_provider: PaymentGateway | str
 
 
 class ProfileReturnSchema(BaseModel):
@@ -55,18 +83,25 @@ class ProfileReturnSchema(BaseModel):
 
 
 class GenerateRoomQRCodeSchema(BaseModel):
+    room_numbers: str
+
     room_numbers: str = Field(
         ..., description="Comma-separated room numbers", example="101,102,103,104"
     )
-    color: str = Field(
+    fill_color: str = Field(
         "black",
         description="Color of the QR code(color name or hex value black or #cccfff)",
+        example="black",
+    )
+    back_color: str = Field(
+        "black",
+        description="Color of the QR code(color name or hex value red or #eeefff)",
         example="black",
     )
 
     class Config:
         json_schema_extra = {
-            "example": {"room_numbers": "101,102,103,104", "color": "black"}
+            "example": {"room_numbers": "101,102,103,104", "fill_color": "black", "back_color": "black", }
         }
 
 

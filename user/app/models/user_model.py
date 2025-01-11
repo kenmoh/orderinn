@@ -5,35 +5,31 @@ from pydantic import BaseModel, EmailStr, Field
 from beanie import Document, Indexed, PydanticObjectId, Link
 
 from ..utils.utils import UserRole, Permission, Resource
-from ..schemas.user_schema import SubscriptionType, PaymentGateway, OutletType
+from ..schemas.user_schema import RolePermission, SubscriptionType, PaymentGateway, OutletType
 
 
 def user_id_gen() -> str:
     return str(uuid1()).replace("-", "")
 
 
-class RolePermission(BaseModel):
-    """
-    Defines what permissions each role has for different resources.
-    This is embedded in the User document.
-    """
-    role: UserRole
-    resource: Resource
-    permission: Permission
-
-    class Settings:
-        name = "role_permissions"
-
-
 class Profile(BaseModel):
     """
     Profile information embedded in User document
     """
-    address: str | None = None
-    cac_reg_number: str | None = None
+    phone_number: str
+    address: str
+    cac_reg_number: str
+    openning_hours: str
+    logo_url: str | None
+
+
+class PaymentGateway(BaseModel):
+    """
+    Payment gateway information embedded in User document
+    """
     payment_gateway_key: str
     payment_gateway_secret: str
-    payment_gateway: PaymentGateway
+    payment_gateway_provider: PaymentGateway
 
 
 class Outlet(Document):
@@ -71,11 +67,12 @@ class Outlet(Document):
 
 class QRCode(Document):
     room_or_table_numbers: str
-    color: str
+    fill_color: str
+    back_color: str
     outlet_type: OutletType
-    download_link: str
+    # download_link: str | None
     company_id: PydanticObjectId
-    user_id: PydanticObjectId  # Reference to User
+    # user_id: PydanticObjectId  # Reference to User
 
     class Settings:
         name = "qrcodes"
@@ -86,13 +83,13 @@ class QRCode(Document):
 
 
 class User(Document):
-    # id: PydanticObjectId = Field(default_factory=PydanticObjectId)
     user_id: str = Field(default_factory=user_id_gen)
     email: EmailStr
     password: str
     company_name: str | None = None
     full_name: str | None = None
-    role: UserRole
+    # phone_number: str | None = None
+    role: UserRole | None = None
     company_id: PydanticObjectId | None = None  # Reference to parent company User
     outlet_id: PydanticObjectId | None = None  # Reference to assigned outlet
 
@@ -103,11 +100,12 @@ class User(Document):
     # Embedded documents
     role_permissions: list[RolePermission] = []
     profile: Profile | None = None
+    payment_gateway: PaymentGateway | None = None
 
     # References
     qrcodes: list[Link[QRCode]] = []  # Link to QRCode documents
     staff: list[Link["User"]] = []    # Link to staff User documents
-    company: Link["User"] | None = None  # Link to company User document
+    # company: Link["User"] | None = None  # Link to company User document
 
     created_at: datetime = Field(default_factory=datetime.now)
 

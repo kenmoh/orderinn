@@ -88,9 +88,9 @@ class Profile(SQLModel, table=True):
     id: str = Field(default_factory=user_id_gen, primary_key=True, unique=True)
     address: str | None
     cac_reg_number: str | None
-    payment_gateway_key: str
-    payment_gateway_secret: str
-    payment_gateway: PaymentGateway
+    payment_gateway_key: str | None
+    payment_gateway_secret: str | None
+    payment_gateway: PaymentGateway | None = None
     user_id: str = Field(default=None, foreign_key="user.id", unique=True)
     user: Optional["User"] = Relationship(
         back_populates="profile", sa_relationship_kwargs={"uselist": False}
@@ -100,7 +100,8 @@ class Profile(SQLModel, table=True):
 class QRCode(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     room_or_table_numbers: str
-    color: str
+    fill_color: str
+    back_color: str
     outlet_type: OutletType
     download_link: str
     company_id: str = Field(foreign_key="user.id", unique=True, nullable=False)

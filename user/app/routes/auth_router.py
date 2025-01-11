@@ -5,6 +5,7 @@ from fastapi.security.oauth2 import OAuth2PasswordRequestForm, OAuth2PasswordBea
 from sqlmodel import select
 
 from user.app.auth.auth import verify_access_token
+from user.app.models import user_model
 
 from ..utils.auth import verify_password, create_access_token
 from ..models.users import RolePermission, User, UserRolePermission
@@ -50,7 +51,7 @@ async def login(
     credentials: OAuth2PasswordRequestForm = Depends(),
 ) -> LoginResponseSchema:
     # Find user by email
-    user = await User.find_one({"email": credentials.username.lower()})
+    user = await user_model.User.find_one({"email": credentials.username.lower()})
 
     if not user:
         raise HTTPException(
