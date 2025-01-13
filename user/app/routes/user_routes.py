@@ -11,10 +11,13 @@ from ..service.user_service import CreateRoomService, UserService
 from ..database.database import get_db
 from ..schemas.user_schema import (
     CreateGuestUserSchema,
+    CreatePermissionGroupSchema,
     CreateUserSchema,
     GatewaySchema,
     GenerateRoomQRCodeSchema,
     GuestReturnSchema,
+    NoPostRoom,
+    OutletSchema,
     OutletType,
     ProfileReturnSchema,
     ProfileSchema,
@@ -89,7 +92,7 @@ async def create_staff_user(
             status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 
-# PROFILE
+# ============== PROFILE ================
 @user_router.post("/me/profile", status_code=status.HTTP_201_CREATED)
 async def create_profile(
     data: ProfileSchema,
@@ -105,6 +108,9 @@ async def create_profile(
             status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
+# ============== QPayment Gateway ================
+
+
 @user_router.post("/gateway-provider", status_code=status.HTTP_201_CREATED)
 async def add_payment_gateway(
     data: GatewaySchema,
@@ -117,6 +123,7 @@ async def add_payment_gateway(
         )
     except Exception as e:
         raise HTTPException(
+
             status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
@@ -129,7 +136,7 @@ async def generate_qr_code(
     outlet_type: OutletType,
     numbers: GenerateRoomQRCodeSchema,
     current_user: User = Depends(get_current_user),
-):
+) -> str:
     try:
         zip_path = await room_service.generate_rooms_qrcode(
             company_id=company_id, room_no=numbers, outlet_type=outlet_type, current_user=current_user
@@ -147,3 +154,40 @@ async def generate_qr_code(
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# ============== Permissions ================
+
+
+@user_router.post('/create-permission-group', status_code=status.HTTP_201_CREATED)
+async def create_permission_group(data: CreatePermissionGroupSchema, current_user: User = Depends(get_current_user)) -> OutletSchema:
+    return await create_permission_group(data=data, current_user=current_user)
+
+
+# ============== Outlet ================
+@user_router.post('/outlet', status_code=status.HTTP_201_CREATED)
+async def create_outlet(data: OutletSchema, current_user: User = Depends(get_current_user)) -> OutletSchema:
+    return await user_service.create_outlet(data=data, current_user=current_user)
+
+
+@user_router.get('/outlet', status_code=status.HTTP_200_OK)
+async def create_outlet(current_user: User = Depends(get_current_user)) -> OutletSchema:
+    return await user_service.get_company_outlet(current_user=current_user)
+
+
+# ============== No post Rooms ================
+@user_router.post('/{company_id}/add-no-post', status_code=status.HTTP_201_CREATED)
+async def create_no_post_rooms(
+    company_id: PydanticObjectId,
+    data: NoPostRoom,
+    current_user: User = Depends(get_current_user)
+
+) -> NoPostRoom:
+    return await room_service.create_no_post_rooms(company_id=company_id, data=data, current_user=current_user)
+
+
+@user_router.get('/{company_id}/no-post-rooms', status_code=status.HTTP_200_OK)
+async def create_no_post_rooms(
+    company_id: PydanticObjectId,
+
+) -> list[NoPostRoom]:
+    return await room_service.get_no_post_rooms(company_id=company_id)

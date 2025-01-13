@@ -5,7 +5,7 @@ from pydantic import BaseModel, EmailStr, Field
 from beanie import Document, Indexed, PydanticObjectId, Link
 
 from ..utils.utils import UserRole, Permission, Resource
-from ..schemas.user_schema import RolePermission, SubscriptionType, PaymentGateway, OutletType
+from ..schemas.user_schema import GroupPermission, RolePermission, SubscriptionType, PaymentGateway, OutletType, NoPostRoom
 
 
 def user_id_gen() -> str:
@@ -80,6 +80,25 @@ class QRCode(Document):
             "company_id",
             "user_id"
         ]
+# Models for Permission Groups
+
+
+class PermissionGroup(Document):
+    """
+    Defines a group of permissions that can be assigned to multiple users
+    """
+    name: str
+    description: str | None = None
+    company_id: PydanticObjectId  # Reference to the company that created this group
+    permissions: list[GroupPermission] = []
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    class Settings:
+        name = "permission_groups"
+        indexes = [
+            "company_id",
+            "name"
+        ]
 
 
 class User(Document):
@@ -99,7 +118,9 @@ class User(Document):
 
     # Embedded documents
     role_permissions: list[RolePermission] = []
+    permission_groups: list[Link[PermissionGroup]] = []
     profile: Profile | None = None
+    no_post: NoPostRoom | None = None
     payment_gateway: PaymentGateway | None = None
 
     # References
@@ -127,11 +148,34 @@ class User(Document):
             }
         }
 
+     # Helper method to get combined permissions from individual and group assignments
+    async def get_all_permissions(self) -> list[RolePermission]:
+        # Start with user's individual permissions
+        all_permissions = self.role_permissions.copy()
+
+        # Add permissions from all groups
+        for group_link in self.permission_groups:
+            group = await group_link.fetch()
+            if group:
+                # Convert GroupPermission to RolePermission
+                group_perms = [
+                    RolePermission(
+                        resource=perm.resource,
+                        permission=perm.permission
+                    )
+                    for perm in group.permissions
+                ]
+                all_permissions.extend(group_perms)
+
+        # Remove duplicates
+        return list({(p.resource, p.permission) for p in all_permissions})
+
 
 async def assign_role_permissions_to_owner(user: User, role: UserRole) -> None:
     """
-        Assign default permissions based on user role
-        """
+    Assign default permissions based on user role.
+    Used for initial creation of super admin, hotel owner, and guest users.
+    """
     permission_mappings = {
         UserRole.SUPER_ADMIN: [
             # Super admin permissions
@@ -175,20 +219,21 @@ async def assign_role_permissions_to_owner(user: User, role: UserRole) -> None:
             (Resource.ORDER, Permission.DELETE),
             (Resource.PAYMENT, Permission.READ),
         ],
-
     }
 
     # Get permissions for the role
     role_perms = permission_mappings.get(role, [])
 
-    # Create RolePermission objects
+    # Create RolePermission objects without the role field
     user.role_permissions = [
         RolePermission(
-            role=role,
             resource=resource,
             permission=permission
         )
         for resource, permission in role_perms
     ]
+
+    # Ensure the user's role is set
+    user.role = role
 
     await user.save()

@@ -1,6 +1,5 @@
 import datetime
 from enum import Enum
-import uuid
 from beanie import PydanticObjectId
 from pydantic import BaseModel, EmailStr, Field
 
@@ -12,9 +11,33 @@ class PaymentGateway(str, Enum):
     PAYSTACK = "paystack"
 
 
+class NoPostRoom(BaseModel):
+    """
+   No post rooms
+    """
+    room_numbers: str
+
+
 class LoginResponseSchema(BaseModel):
     access_token: str
     token_type: str
+
+
+class GroupPermission(BaseModel):
+
+    resource: Resource
+    permission: Permission
+
+
+class CreatePermissionGroupSchema(BaseModel):
+    name: str
+    description: str | None = None
+    # {"resource": ["CREATE", "READ"], ...}
+    permissions: list[dict[str, list[str]]]
+
+
+class AssignGroupToStaffSchema(BaseModel):
+    group_ids: list[PydanticObjectId]
 
 
 class CreateUserSchema(BaseModel):
@@ -29,17 +52,29 @@ class CreateGuestUserSchema(BaseModel):
     password: str
 
 
+class OutletSchema(BaseModel):
+    name: str
+
+
 class RolePermission(BaseModel):
     """
     Defines what permissions each role has for different resources.
     This is embedded in the User document.
     """
-    role: UserRole
+    # role: UserRole | None = None
     resource: Resource
-    permission: Permission
+    permission: list[Permission]
 
-    class Settings:
-        name = "role_permissions"
+    # class Settings:
+    #     name = "role_permissions"
+
+
+class CreateStaffUserSchema(BaseModel):
+    email: EmailStr
+    full_name: str
+    role: UserRole
+    role_permissions: list[RolePermission]
+    password: str
 
 
 class UserReturnSchema(BaseModel):
