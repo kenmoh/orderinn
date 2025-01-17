@@ -53,3 +53,5 @@ coverage.xml
 Thumbs.db
 ehthumbs.db
 key.py
+
+common/
