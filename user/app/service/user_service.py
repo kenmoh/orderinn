@@ -1,22 +1,28 @@
+
 import tempfile
 from pathlib import Path
 import zipfile
 from beanie import Link, PydanticObjectId, WriteRules
+from fastapi import Depends, HTTPException, status
 import qrcode
 from PIL import Image
 from typing import List
 import requests
+from beanie.odm.operators.find.logical import Or
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from cryptography.fernet import Fernet
 
-from user.app.utils.utils import ServicePermissionError
+from ..auth.auth import get_current_user
+from ..utils.utils import ServicePermissionError
 
 from ..utils.auth import hash_password
 from ..models import user_model
 from ..models.users import RolePermission, User, UserRole, QRCode
 from ..schemas.user_schema import (
+    AddStaffToOutletSchema,
     AssignGroupToStaffSchema,
     CreateGuestUserSchema,
     CreatePermissionGroupSchema,
@@ -25,10 +31,9 @@ from ..schemas.user_schema import (
     GatewaySchema,
     GenerateRoomQRCodeSchema,
     GroupPermission,
-    NoPostRoom,
+    NoPostRoomSchema,
     OutletSchema,
     ProfileSchema, OutletType, SubscriptionType, RolePermission
-
 )
 from ..utils.utils import Resource, Permission
 from ..config import get_settings
@@ -41,7 +46,7 @@ cipher_suite = Fernet(ENCRYPTION_KEY)
 # Service functions for managing groups
 
 
-async def create_permission_group(
+async def create_staff_permission_group(
     current_user: user_model.User,
     data: CreatePermissionGroupSchema
 ) -> user_model.PermissionGroup:
@@ -51,14 +56,14 @@ async def create_permission_group(
             "Only hotel owners can create permission groups")
 
     permissions = []
-    for resource, perms in data.permissions.items():
-        for perm in perms:
-            permissions.append(
-                GroupPermission(
-                    resource=Resource(resource),
-                    permission=Permission(perm)
-                )
+
+    for group in data.permissions:
+        permissions.append(
+            GroupPermission(
+                resource=group.resource,
+                permissions=group.permissions
             )
+        )
 
     group = user_model.PermissionGroup(
         name=data.name,
@@ -204,7 +209,7 @@ class UserService:
         return new_user
 
     async def create_guest_user(self, data: CreateGuestUserSchema):
-        existing_user = await self.check_unique_fields(
+        existing_user = await self.check_unique_email_staff(
             email=data.email
         )
         if existing_user:
@@ -236,14 +241,14 @@ class UserService:
 
         role_permissions = []
 
-        for resource_perm in data.resource_permissions:
-            for permission in resource_perm.permissions:
-                role_permissions.append(
-                    RolePermission(
-                        resource=resource_perm.resource,
-                        permission=permission
-                    )
+        for resource_perm in data.role_permissions:
+
+            role_permissions.append(
+                RolePermission(
+                    resource=resource_perm.resource,
+                    permission=resource_perm.permission
                 )
+            )
 
         user.staff.append(user_model.User(
             company_id=current_user.id,
@@ -278,13 +283,13 @@ class UserService:
         # Create new role permissions list
         new_permissions = []
         for resource_perm in resource_permissions:
-            for permission in resource_perm.permissions:
-                new_permissions.append(
-                    RolePermission(
-                        resource=resource_perm.resource,
-                        permission=permission
-                    )
+            # for permission in resource_perm.permissions:
+            new_permissions.append(
+                RolePermission(
+                    resource=resource_perm.resource,
+                    permission=resource_perm.permission
                 )
+            )
 
         # Update staff permissions
         staff.role_permissions = new_permissions
@@ -320,6 +325,10 @@ class UserService:
         await user.save()
 
         return user.profile
+
+    async def get_company_staff(self, current_user: user_model.User):
+        users = await user_model.User.find(user_model.User.id == current_user.id, fetch_links=True).to_list()
+        return users
 
     async def add_payment_gateway(self, data: GatewaySchema, current_user: user_model.User):
         user = await user_model.User.find(user_model.User.id == current_user.id).first_or_none()
@@ -358,75 +367,130 @@ class UserService:
         staff.role_permissions.append(role_permissions)
         await staff.save()
 
+    async def get_company_outlets(self, company_id: PydanticObjectId) -> OutletSchema:
+        return await user_model.Outlet.find(user_model.Outlet.company_id == company_id).to_list()
+
     async def create_outlet(self, data: OutletSchema, current_user: user_model.User) -> OutletSchema:
 
-        user: user_model.User = user_model.User.find(
+        outlets = await self.get_company_outlets(current_user.id)
+
+        company_outlets = [outlet.name for outlet in outlets]
+
+        user: user_model.User = await user_model.User.find(
             user_model.User.id == current_user.id).first_or_none()
+
         if not user:
             raise ServicePermissionError('No user with this ID exists.')
 
         if current_user.role != UserRole.HOTEL_OWNER:
             raise ServicePermissionError('Invalid user.')
 
+        if data.name in company_outlets:
+            raise ServicePermissionError('This outlet already exists')
+
         outlet = user_model.Outlet(
-            name=data.name, company_id=current_user.id)
+            name=data.name.lower(), company_id=current_user.id)
 
         await outlet.save()
 
-        user.outlet_id = outlet.id
+        # user.outlet_id = outlet.id
         await user.save()
 
         return outlet
 
-    async def get_company_outlet(current_user: user_model.User) -> list[OutletSchema]:
+    async def add_staff_to_outlet(self, outlet_id: PydanticObjectId, staff: AddStaffToOutletSchema,  current_user: user_model.User):
+        """ 
+        Add staff member(s) to outlet
+        """
+        # company_staff = await user_model.User.find(user_model.User.id == current_user.id, fetch_links=True).to_list()
+        outlet = await user_model.Outlet.find(user_model.Outlet.id == outlet_id, user_model.Outlet.company_id == current_user.id).first_or_none()
+        print(outlet)
+        if not outlet:
+            raise ServicePermissionError('Invalid outlet.')
 
-        outlets: user_model.Outlet = await user_model.Outlet.find(
-            user_model.Outlet.company_id == current_user.company_id).to_list()
+         # Fetch the staff members selected by the user
+        selected_staff = await user_model.User.find(
+            user_model.User.id.in_(staff.staff_ids),
+            # Ensure they belong to the current company
+            user_model.User.company_id == current_user.id
+        ).to_list()
 
-        return outlets
+        if not selected_staff:
+            raise ServicePermissionError("Selected staff not found")
 
-    async def add_staff_to_outlet(self, staff: user_model.User, current_user: user_model.User):
-        staff = user_model.User.find(
-            user_model.User.id == staff.id).first_or_none()
-        # outlet = user_model.Outlet.find(user_model.Outlet.id == outlet_id).first_or_none()
-        if not staff:
-            raise ServicePermissionError('Invalid staff user.')
-        if current_user.role != UserRole.HOTEL_OWNER:
-            raise ServicePermissionError('Invalid user.')
+        # Add selected staff to the outlet
+        outlet.staff = selected_staff
 
-        return await user_model.Outlet.add_staff_member(staff=staff)
+        await outlet.save()
+
+        return outlet
+
+        # if not staff:
+        #     raise ServicePermissionError('Invalid staff user.')
+        # if current_user.role != UserRole.HOTEL_OWNER:
+        #     raise ServicePermissionError('Invalid user.')
+
+        # return await user_model.Outlet.add_staff_member(staff=staff)
 
 
 class CreateRoomService:
 
-    async def create_no_post_rooms(self, company_id: PydanticObjectId, current_user: user_model.User, data: NoPostRoom):
-        user: user_model.User = user_model.User.find(
-            user_model.User.company_id == current_user.company_id).first_or_none()
+    async def create_no_post_rooms(
+        self,  current_user: user_model.User, data: NoPostRoomSchema
+    ):
+        # Verify the user
+        user: user_model.User = await user_model.User.find(
+            Or(user_model.User.company_id == current_user.company_id,
+               user_model.User.id == current_user.id)
+        ).first_or_none()
 
         if not user:
-            raise ServicePermissionError('Invalid user.')
+            raise ServicePermissionError("Invalid user.")
 
-        if current_user.company_id == company_id:
+        # Validate current_user permissions
+        if user.id != current_user.id or user.company_id != current_user.company_id:
+            raise ServicePermissionError("Permission denied.")
 
-            no_post_rooms = NoPostRoom(
-                room_numbers=data.room_numbers
+        no_post_rooms = await user_model.NoPostRoom.find(Or(user_model.NoPostRoom.company_id == user.id,
+                                                            user_model.NoPostRoom.company_id == user.company_id)).first_or_none()
+
+        if no_post_rooms:
+            # Update the existing entry
+            existing_no_post_list = set(no_post_rooms.no_post_list or [])
+            new_no_post_list = set(data.no_post_list)
+            combined_no_post_list = list(
+                existing_no_post_list.union(new_no_post_list))
+
+            no_post_rooms.no_post_list = combined_no_post_list
+            await no_post_rooms.save()
+
+            return no_post_rooms
+        else:
+            # Create a new entry
+            no_post_rooms = user_model.NoPostRoom(
+                company_id=current_user.company_id if current_user.company_id else current_user.id,
+                no_post_list=data.no_post_list,
             )
+            await no_post_rooms.save()
 
-            user.no_post = no_post_rooms
+            return no_post_rooms
 
-            await user.save()
+    async def get_no_post_rooms(self, current_user: user_model.User) -> NoPostRoomSchema:
 
-            return user.no_post
-
-    async def get_no_post_rooms(self, company_id: PydanticObjectId) -> list[NoPostRoom]:
         user: user_model.User = await user_model.User.find(
-            user_model.User.company_id == company_id).first_or_none()
+            Or(user_model.User.id == current_user.id,
+               user_model.User.company_id == current_user.company_id)
+        ).first_or_none()
+
         if not user:
             raise ServicePermissionError('No user found.')
 
-        no_post_rooms_str = user.no_post
+        no_post_room_list = await user_model.NoPostRoom.find(
+            Or(user_model.NoPostRoom.company_id == current_user.company_id,
+               user_model.NoPostRoom.company_id == current_user.id)
+        ).first_or_none()
 
-        return no_post_rooms_str.split(',')
+        return no_post_room_list
 
     async def generate_rooms_qrcode(
         self,
@@ -731,7 +795,9 @@ class PermissionChecker:
 
         # Then check group permissions
         for group_link in user.permission_groups:
+
             group = await group_link.fetch()
+
             if group:
                 group_permission = any(
                     perm.resource == resource and perm.permission == permission
@@ -764,3 +830,46 @@ class PermissionChecker:
             RolePermission(resource=resource, permission=permission)
             for resource, permission in all_permissions
         ]
+
+
+async def require_permission(
+    resource: Resource,
+    permission: Permission
+):
+    async def permission_dependency(
+        current_user: User = Depends(get_current_user)
+    ) -> User:
+        has_perm = await PermissionChecker.has_permission(
+            current_user, resource, permission
+        )
+        if not has_perm:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied: {permission} {resource}"
+            )
+        return current_user
+    return permission_dependency
+
+
+{
+    "name": "Manager Group",
+    "description": "Permissions for hotel managers",
+    "permissions": [
+        {
+            "resource": "inventory",
+            "permissions": ["create", "read", "update", "delete"]
+        },
+        {
+            "resource": "user",
+            "permissions": ["create", "read", "update", "delete"]
+        },
+        {
+            "resource": "item",
+            "permissions": ["create", "read", "update", "delete"]
+        },
+        {
+            "resource": "stock",
+            "permissions": ["create", "read", "update", "delete"]
+        }
+    ]
+}

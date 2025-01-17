@@ -11,11 +11,9 @@ class PaymentGateway(str, Enum):
     PAYSTACK = "paystack"
 
 
-class NoPostRoom(BaseModel):
-    """
-   No post rooms
-    """
-    room_numbers: str
+class NoPostRoomSchema(BaseModel):
+    company_id: PydanticObjectId | None = None
+    no_post_list: list[str]
 
 
 class LoginResponseSchema(BaseModel):
@@ -26,14 +24,7 @@ class LoginResponseSchema(BaseModel):
 class GroupPermission(BaseModel):
 
     resource: Resource
-    permission: Permission
-
-
-class CreatePermissionGroupSchema(BaseModel):
-    name: str
-    description: str | None = None
-    # {"resource": ["CREATE", "READ"], ...}
-    permissions: list[dict[str, list[str]]]
+    permissions: list[Permission]
 
 
 class AssignGroupToStaffSchema(BaseModel):
@@ -53,6 +44,7 @@ class CreateGuestUserSchema(BaseModel):
 
 
 class OutletSchema(BaseModel):
+    id: PydanticObjectId | None = None
     name: str
 
 
@@ -67,6 +59,10 @@ class RolePermission(BaseModel):
 
     # class Settings:
     #     name = "role_permissions"
+
+
+class AddStaffToOutletSchema(BaseModel):
+    staff_ids: list[PydanticObjectId]
 
 
 class CreateStaffUserSchema(BaseModel):
@@ -88,12 +84,15 @@ class UserReturnSchema(BaseModel):
     created_at: datetime.datetime
 
 
+class StaffUserReturnSchema(BaseModel):
+    staff: list[UserReturnSchema]
+
+
 class GuestReturnSchema(BaseModel):
     id: PydanticObjectId
     email: EmailStr
     full_name: str
     role: UserRole | None = None
-    role_permissions: list[RolePermission]
     created_at: datetime.datetime
 
 
@@ -149,3 +148,9 @@ class SubscriptionType(str, Enum):
     BASIC = "basic"
     PRO = "pro"
     ENTERPRISE = "enterprise"
+
+
+class CreatePermissionGroupSchema(BaseModel):
+    name: str
+    description: str | None = None
+    permissions: list[GroupPermission]

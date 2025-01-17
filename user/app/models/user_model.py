@@ -5,11 +5,19 @@ from pydantic import BaseModel, EmailStr, Field
 from beanie import Document, Indexed, PydanticObjectId, Link
 
 from ..utils.utils import UserRole, Permission, Resource
-from ..schemas.user_schema import GroupPermission, RolePermission, SubscriptionType, PaymentGateway, OutletType, NoPostRoom
+from ..schemas.user_schema import GroupPermission, RolePermission, SubscriptionType, PaymentGateway, OutletType
 
 
 def user_id_gen() -> str:
     return str(uuid1()).replace("-", "")
+
+
+class NoPostRoom(Document):
+    company_id: PydanticObjectId
+    no_post_list: list[str] = []
+
+    class Settings:
+        name = "no_post_list"
 
 
 class Profile(BaseModel):
@@ -110,7 +118,7 @@ class User(Document):
     # phone_number: str | None = None
     role: UserRole | None = None
     company_id: PydanticObjectId | None = None  # Reference to parent company User
-    outlet_id: PydanticObjectId | None = None  # Reference to assigned outlet
+    # outlet_id: PydanticObjectId | None = None  # Reference to assigned outlet
 
     is_subscribed: bool = False
     subscription_type: SubscriptionType | None = None
@@ -120,11 +128,12 @@ class User(Document):
     role_permissions: list[RolePermission] = []
     permission_groups: list[Link[PermissionGroup]] = []
     profile: Profile | None = None
-    no_post: NoPostRoom | None = None
     payment_gateway: PaymentGateway | None = None
 
     # References
+    no_post: Link[NoPostRoom] | None = None  # Link to NoPostRoom documents
     qrcodes: list[Link[QRCode]] = []  # Link to QRCode documents
+    outlets: list[Link[Outlet]] = []  # Link to Outlet documents
     staff: list[Link["User"]] = []    # Link to staff User documents
     # company: Link["User"] | None = None  # Link to company User document
 
@@ -161,7 +170,7 @@ class User(Document):
                 group_perms = [
                     RolePermission(
                         resource=perm.resource,
-                        permission=perm.permission
+                        permissions=perm.permission
                     )
                     for perm in group.permissions
                 ]
@@ -179,61 +188,47 @@ async def assign_role_permissions_to_owner(user: User, role: UserRole) -> None:
     permission_mappings = {
         UserRole.SUPER_ADMIN: [
             # Super admin permissions
-            (Resource.USER, Permission.CREATE),
-            (Resource.USER, Permission.READ),
-            (Resource.USER, Permission.UPDATE),
-            (Resource.USER, Permission.DELETE),
-            (Resource.ORDER, Permission.READ),
-            (Resource.ORDER, Permission.UPDATE),
-            (Resource.PAYMENT, Permission.READ),
-            (Resource.INVENTORY, Permission.READ),
-            (Resource.STOCK, Permission.READ),
+            (Resource.USER, [Permission.CREATE, Permission.READ,
+             Permission.UPDATE, Permission.DELETE]),
+            (Resource.ORDER, [Permission.READ, Permission.UPDATE]),
+            (Resource.PAYMENT, [Permission.READ]),
+            (Resource.INVENTORY, [Permission.READ]),
+            (Resource.STOCK, [Permission.READ]),
         ],
         UserRole.HOTEL_OWNER: [
             # Hotel owner permissions
-            (Resource.USER, Permission.CREATE),
-            (Resource.USER, Permission.READ),
-            (Resource.USER, Permission.UPDATE),
-            (Resource.USER, Permission.DELETE),
-            (Resource.ITEM, Permission.CREATE),
-            (Resource.ITEM, Permission.READ),
-            (Resource.ITEM, Permission.UPDATE),
-            (Resource.ITEM, Permission.DELETE),
-            (Resource.ORDER, Permission.READ),
-            (Resource.ORDER, Permission.UPDATE),
-            (Resource.PAYMENT, Permission.READ),
-            (Resource.INVENTORY, Permission.CREATE),
-            (Resource.INVENTORY, Permission.READ),
-            (Resource.INVENTORY, Permission.UPDATE),
-            (Resource.INVENTORY, Permission.DELETE),
-            (Resource.STOCK, Permission.CREATE),
-            (Resource.STOCK, Permission.READ),
-            (Resource.STOCK, Permission.UPDATE),
-            (Resource.STOCK, Permission.DELETE),
+            (Resource.USER, [Permission.CREATE, Permission.READ,
+             Permission.UPDATE, Permission.DELETE]),
+            (Resource.ITEM, [Permission.CREATE, Permission.READ,
+             Permission.UPDATE, Permission.DELETE]),
+            (Resource.ORDER, [Permission.READ, Permission.UPDATE]),
+            (Resource.PAYMENT, [Permission.READ]),
+            (Resource.INVENTORY, [
+             Permission.CREATE, Permission.READ, Permission.UPDATE, Permission.DELETE]),
+            (Resource.STOCK, [Permission.CREATE, Permission.READ,
+             Permission.UPDATE, Permission.DELETE]),
         ],
         UserRole.GUEST: [
             # Guest permissions
-            (Resource.ORDER, Permission.CREATE),
-            (Resource.ORDER, Permission.READ),
-            (Resource.ORDER, Permission.UPDATE),
-            (Resource.ORDER, Permission.DELETE),
-            (Resource.PAYMENT, Permission.READ),
+            (Resource.ORDER, [Permission.CREATE, Permission.READ,
+             Permission.UPDATE, Permission.DELETE]),
+            (Resource.PAYMENT, [Permission.READ]),
+            (Resource.ITEM, [Permission.READ]),
         ],
     }
 
     # Get permissions for the role
     role_perms = permission_mappings.get(role, [])
 
-    # Create RolePermission objects without the role field
+    # Create RolePermission objects
     user.role_permissions = [
         RolePermission(
             resource=resource,
-            permission=permission
+            permission=permissions
         )
-        for resource, permission in role_perms
+        for resource, permissions in role_perms
     ]
 
     # Ensure the user's role is set
     user.role = role
-
     await user.save()

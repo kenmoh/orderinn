@@ -3,24 +3,26 @@ import os
 from beanie import PydanticObjectId
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.responses import StreamingResponse
-from sqlmodel.ext.asyncio.session import AsyncSession
 
+from user.app.models import user_model
 
 from ..auth.auth import get_current_user
-from ..service.user_service import CreateRoomService, UserService
-from ..database.database import get_db
+from ..service.user_service import CreateRoomService, UserService, create_staff_permission_group
 from ..schemas.user_schema import (
+    AddStaffToOutletSchema,
     CreateGuestUserSchema,
     CreatePermissionGroupSchema,
+    CreateStaffUserSchema,
     CreateUserSchema,
     GatewaySchema,
     GenerateRoomQRCodeSchema,
     GuestReturnSchema,
-    NoPostRoom,
+    NoPostRoomSchema,
     OutletSchema,
     OutletType,
-    ProfileReturnSchema,
     ProfileSchema,
+    RolePermission,
+    StaffUserReturnSchema,
     UserReturnSchema,
 
 )
@@ -40,6 +42,14 @@ async def get_users() -> list[UserReturnSchema]:
     return await user_service.get_users()
 
 
+@user_router.get("/company-staff")
+async def get_company_staff(current_user: user_model.User = Depends(get_current_user)) -> list[StaffUserReturnSchema]:
+    """
+    - Get a list of cpmpany staff.
+    """
+    return await user_service.get_company_staff(current_user=current_user)
+
+
 @user_router.get("/users/{user_id}")
 async def get_user(user_id: PydanticObjectId) -> UserReturnSchema:
     """
@@ -54,13 +64,13 @@ async def get_user(user_id: PydanticObjectId) -> UserReturnSchema:
 
 @user_router.post("/guest-users", status_code=status.HTTP_201_CREATED)
 async def create_guest_user(
-    data: CreateUserSchema, db: AsyncSession = Depends(get_db)
+    data: CreateGuestUserSchema
 ) -> GuestReturnSchema:
-    error = await user_service.check_unique_fields(data.email, data.company_name, db)
+    error = await user_service.check_unique_email_staff(data.email)
     if error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error)
 
-    return await user_service.create_guest_user(user_data=data, db=db)
+    return await user_service.create_guest_user(data=data)
 
 
 @user_router.post("/company-users", status_code=status.HTTP_201_CREATED)
@@ -78,7 +88,7 @@ async def create_company_user(
 
 @user_router.post("/create-staff", status_code=status.HTTP_201_CREATED)
 async def create_staff_user(
-    data: CreateGuestUserSchema,
+    data: CreateStaffUserSchema,
     current_user: User = Depends(get_current_user),
 ) -> GuestReturnSchema:
 
@@ -86,6 +96,23 @@ async def create_staff_user(
 
         return await user_service.create_staff(
             current_user=current_user, data=data,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(e))
+
+
+@user_router.patch("/{staff_id}/update-staff-permission", status_code=status.HTTP_202_ACCEPTED)
+async def create_staff_user(
+    staff_id: PydanticObjectId,
+    resource_permissions: list[RolePermission],
+    current_user: User = Depends(get_current_user),
+) -> GuestReturnSchema:
+
+    try:
+
+        return await user_service.update_staff_permissions(
+            current_user=current_user, resource_permissions=resource_permissions, staff_id=staff_id
         )
     except Exception as e:
         raise HTTPException(
@@ -108,7 +135,7 @@ async def create_profile(
             status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
-# ============== QPayment Gateway ================
+# ============== Payment Gateway ================
 
 
 @user_router.post("/gateway-provider", status_code=status.HTTP_201_CREATED)
@@ -160,34 +187,61 @@ async def generate_qr_code(
 
 @user_router.post('/create-permission-group', status_code=status.HTTP_201_CREATED)
 async def create_permission_group(data: CreatePermissionGroupSchema, current_user: User = Depends(get_current_user)) -> OutletSchema:
-    return await create_permission_group(data=data, current_user=current_user)
+    return await create_staff_permission_group(data=data, current_user=current_user)
 
 
 # ============== Outlet ================
-@user_router.post('/outlet', status_code=status.HTTP_201_CREATED)
+@user_router.post('/create-outlet', status_code=status.HTTP_201_CREATED)
 async def create_outlet(data: OutletSchema, current_user: User = Depends(get_current_user)) -> OutletSchema:
-    return await user_service.create_outlet(data=data, current_user=current_user)
+
+    try:
+        return await user_service.create_outlet(data=data, current_user=current_user)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(e))
+
+
+@user_router.post('/{outlet_id}/outlet', status_code=status.HTTP_201_CREATED)
+async def add_staff_to_outlet(outlet_id: PydanticObjectId, data: AddStaffToOutletSchema, current_user: User = Depends(get_current_user)):
+
+    try:
+        return await user_service.add_staff_to_outlet(outlet_id=outlet_id, staff=data, current_user=current_user)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @user_router.get('/outlet', status_code=status.HTTP_200_OK)
-async def create_outlet(current_user: User = Depends(get_current_user)) -> OutletSchema:
-    return await user_service.get_company_outlet(current_user=current_user)
+async def get_company_outlet(current_user: User = Depends(get_current_user)) -> list[OutletSchema]:
+    try:
+        return await user_service.get_company_outlets(current_user.id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-# ============== No post Rooms ================
-@user_router.post('/{company_id}/add-no-post', status_code=status.HTTP_201_CREATED)
+# ============== No Post Rooms ================
+@user_router.post('/add-no-post', status_code=status.HTTP_201_CREATED)
 async def create_no_post_rooms(
-    company_id: PydanticObjectId,
-    data: NoPostRoom,
+
+    data: NoPostRoomSchema,
     current_user: User = Depends(get_current_user)
 
-) -> NoPostRoom:
-    return await room_service.create_no_post_rooms(company_id=company_id, data=data, current_user=current_user)
+) -> NoPostRoomSchema:
+    try:
+        return await room_service.create_no_post_rooms(data=data, current_user=current_user)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@user_router.get('/{company_id}/no-post-rooms', status_code=status.HTTP_200_OK)
-async def create_no_post_rooms(
-    company_id: PydanticObjectId,
+@user_router.get('/no-post-rooms', status_code=status.HTTP_200_OK)
+async def gete_no_post_rooms(
+    current_user: User = Depends(get_current_user)
+) -> NoPostRoomSchema:
 
-) -> list[NoPostRoom]:
-    return await room_service.get_no_post_rooms(company_id=company_id)
+    try:
+        return await room_service.get_no_post_rooms(current_user=current_user)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
