@@ -1,4 +1,3 @@
-
 from typing import Optional
 import uuid
 from datetime import datetime
@@ -50,7 +49,8 @@ def user_id_gen():
 
 class User(SQLModel, table=True):
     id: str = Field(
-        primary_key=True, default_factory=user_id_gen, index=True, unique=True)
+        primary_key=True, default_factory=user_id_gen, index=True, unique=True
+    )
     email: str = Field(unique=True)
     password: str
     company_name: str | None = Field(index=True, unique=True)
@@ -59,8 +59,7 @@ class User(SQLModel, table=True):
 
     is_subscribed: Optional[bool] = Field(default=False)
     subscription_type: SubscriptionType = Field(nullable=True)
-    subscription_start_date: Optional[datetime] = Field(
-        default=None, nullable=True)
+    subscription_start_date: Optional[datetime] = Field(default=None, nullable=True)
 
     role_permissions: list[RolePermission] = Relationship(
         back_populates="users",
@@ -70,8 +69,7 @@ class User(SQLModel, table=True):
         back_populates="user", cascade_delete=True
     )
 
-    qrcodes: list['QRCode'] = Relationship(
-        back_populates="user", cascade_delete=True)
+    qrcodes: list["QRCode"] = Relationship(back_populates="user", cascade_delete=True)
 
     company: Optional["User"] = Relationship(
         back_populates="staff",
@@ -105,6 +103,4 @@ class QRCode(SQLModel, table=True):
     outlet_type: OutletType
     download_link: str
     company_id: str = Field(foreign_key="user.id", unique=True, nullable=False)
-    user: Optional["User"] = Relationship(
-        back_populates="qrcodes"
-    )
+    user: Optional["User"] = Relationship(back_populates="qrcodes")

@@ -1,4 +1,3 @@
-
 import urllib.parse
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
@@ -6,7 +5,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import SQLModel, text
 
-from ..models.user_model import NoPostRoom, Outlet, PermissionGroup, QRCode, User, Profile
+from ..models.user_model import NoPostRoom, Outlet, PermissionGroup, QRCode, User
+from ..models.item_model import Item, ItemStock
 
 from ..config import get_settings
 
@@ -25,8 +25,20 @@ SessionLocal = async_sessionmaker(
 
 async def init_user_db():
     client = AsyncIOMotorClient(
-        f"mongodb+srv://{USERNAME}:{PASSWORD}@orderinn.p98d4.mongodb.net/")
-    await init_beanie(database=client.orderinn, document_models=[User, QRCode, Outlet, PermissionGroup, NoPostRoom])
+        f"mongodb+srv://{USERNAME}:{PASSWORD}@orderinn.p98d4.mongodb.net/"
+    )
+    await init_beanie(
+        database=client.orderinn,
+        document_models=[
+            User,
+            QRCode,
+            Outlet,
+            PermissionGroup,
+            NoPostRoom,
+            ItemStock,
+            Item,
+        ],
+    )
 
 
 async def init_db():
@@ -47,19 +59,3 @@ async def get_db():
             raise
         finally:
             await session.close()
-
-
-# async def get_db() -> AsyncGenerator[AsyncSession, None]:
-#     """Dependency for getting async database session."""
-#     async with SessionLocal() as session:
-#         try:
-#             yield session
-#         except Exception:
-#             await session.rollback()
-#             raise
-#         finally:
-#             await session.close()
-
-# async def get_db():
-#     async with SessionLocal() as session:
-#         yield session

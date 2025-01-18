@@ -22,7 +22,6 @@ class LoginResponseSchema(BaseModel):
 
 
 class GroupPermission(BaseModel):
-
     resource: Resource
     permissions: list[Permission]
 
@@ -53,6 +52,7 @@ class RolePermission(BaseModel):
     Defines what permissions each role has for different resources.
     This is embedded in the User document.
     """
+
     # role: UserRole | None = None
     resource: Resource
     permission: list[Permission]
@@ -79,13 +79,24 @@ class UserReturnSchema(BaseModel):
     email: EmailStr
     company_name: str | None
     full_name: str | None
-    is_subscribed: bool
+    # is_subscribed: bool
     role: UserRole | None = None
     created_at: datetime.datetime
 
 
 class StaffUserReturnSchema(BaseModel):
     staff: list[UserReturnSchema]
+
+
+class StaffMemberSchema(BaseModel):
+    full_name: str
+    role: str
+
+
+class AddStaffToOutletReturnSchema(BaseModel):
+    id: PydanticObjectId
+    name: str
+    staff_members: list[StaffMemberSchema]
 
 
 class GuestReturnSchema(BaseModel):
@@ -135,7 +146,11 @@ class GenerateRoomQRCodeSchema(BaseModel):
 
     class Config:
         json_schema_extra = {
-            "example": {"room_numbers": "101,102,103,104", "fill_color": "black", "back_color": "black", }
+            "example": {
+                "room_numbers": "101,102,103,104",
+                "fill_color": "black",
+                "back_color": "black",
+            }
         }
 
 

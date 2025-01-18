@@ -19,9 +19,9 @@ class Resource(str, Enum):
     USER = "user"
     ITEM = "item"
     ORDER = "order"
-    INVENTORY = "inventory"
     PAYMENT = "payment"
     STOCK = "stock"
+    INVENTORY = "inventory"  # remove
 
 
 class Permission(str, Enum):
@@ -33,9 +33,11 @@ class Permission(str, Enum):
 
 class ServiceError(Exception):
     """Base exception for service errors"""
+
     pass
 
 
 class ServicePermissionError(ServiceError):
     """Raised when user doesn't have permission"""
+
     pass

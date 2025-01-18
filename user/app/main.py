@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from ..app.routes.auth_router import login_router
-from ..app.routes import user_routes
+from ..app.routes import user_routes, inventory_routes, order_routes
 from ..app.database.database import init_user_db
 
 
@@ -32,3 +32,5 @@ def read_root():
 
 app.include_router(login_router)
 app.include_router(user_routes.user_router)
+app.include_router(order_routes.order_router)
+app.include_router(inventory_routes.inventory_router)

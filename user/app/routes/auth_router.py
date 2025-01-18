@@ -25,20 +25,18 @@ async def login(
 
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid Credentials!"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Credentials!"
         )
 
     if not verify_password(credentials.password, user.password):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid Credentials!"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Credentials!"
         )
 
     resource_permissions = [
         {
             "resource": str(perm.resource),
-            "permissions": [str(p) for p in perm.permission]
+            "permissions": [str(p) for p in perm.permission],
         }
         for perm in (user.role_permissions or [])
     ]
@@ -46,7 +44,7 @@ async def login(
     token_data = {
         "id": str(user.id),
         "role": str(user.role),
-        "resource_permissions": resource_permissions
+        "resource_permissions": resource_permissions,
     }
 
     access_token = create_access_token(data=token_data)

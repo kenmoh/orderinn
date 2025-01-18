@@ -1,11 +1,18 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import uuid1
 import pymongo
 from pydantic import BaseModel, EmailStr, Field
 from beanie import Document, Indexed, PydanticObjectId, Link
 
 from ..utils.utils import UserRole, Permission, Resource
-from ..schemas.user_schema import GroupPermission, RolePermission, SubscriptionType, PaymentGateway, OutletType
+from ..schemas.user_schema import (
+    GroupPermission,
+    RolePermission,
+    SubscriptionType,
+    PaymentGateway,
+    OutletType,
+)
 
 
 def user_id_gen() -> str:
@@ -24,6 +31,7 @@ class Profile(BaseModel):
     """
     Profile information embedded in User document
     """
+
     phone_number: str
     address: str
     cac_reg_number: str
@@ -35,6 +43,7 @@ class PaymentGateway(BaseModel):
     """
     Payment gateway information embedded in User document
     """
+
     payment_gateway_key: str
     payment_gateway_secret: str
     payment_gateway_provider: PaymentGateway
@@ -49,28 +58,11 @@ class Outlet(Document):
 
     class Settings:
         name = "outlets"
+
         indexes = [
             "company_id",
-            "name"
+            "name",
         ]
-
-    async def add_staff_member(self, staff: "User"):
-        if staff not in self.staff_members:
-            self.staff_members.append(Link(staff))
-            staff.outlet_id = self.id  # Update staff's outlet reference
-            await staff.save()
-            await self.save()
-
-    async def remove_staff_member(self, staff: "User"):
-        if staff in self.staff_members:
-            self.staff_members.remove(Link(staff))
-            staff.outlet_id = None
-            await staff.save()
-            await self.save()
-
-    async def get_staff_members(self) -> list["User"]:
-        """Get all staff members assigned to this outlet"""
-        return await User.find({"outlet_id": str(self.id)}).to_list()
 
 
 class QRCode(Document):
@@ -84,10 +76,9 @@ class QRCode(Document):
 
     class Settings:
         name = "qrcodes"
-        indexes = [
-            "company_id",
-            "user_id"
-        ]
+        indexes = ["company_id", "user_id"]
+
+
 # Models for Permission Groups
 
 
@@ -95,6 +86,7 @@ class PermissionGroup(Document):
     """
     Defines a group of permissions that can be assigned to multiple users
     """
+
     name: str
     description: str | None = None
     company_id: PydanticObjectId  # Reference to the company that created this group
@@ -103,10 +95,7 @@ class PermissionGroup(Document):
 
     class Settings:
         name = "permission_groups"
-        indexes = [
-            "company_id",
-            "name"
-        ]
+        indexes = ["company_id", "name"]
 
 
 class User(Document):
@@ -134,7 +123,7 @@ class User(Document):
     no_post: Link[NoPostRoom] | None = None  # Link to NoPostRoom documents
     qrcodes: list[Link[QRCode]] = []  # Link to QRCode documents
     outlets: list[Link[Outlet]] = []  # Link to Outlet documents
-    staff: list[Link["User"]] = []    # Link to staff User documents
+    staff: list[Link["User"]] = []  # Link to staff User documents
     # company: Link["User"] | None = None  # Link to company User document
 
     created_at: datetime = Field(default_factory=datetime.now)
@@ -144,7 +133,6 @@ class User(Document):
         indexes = [
             "user_id",
             "company_id",
-
         ]
 
     class Config:
@@ -153,11 +141,11 @@ class User(Document):
                 "email": "user@example.com",
                 "password": "hashed_password",
                 "company_name": "Hotel ABC",
-                "role": UserRole.HOTEL_OWNER
+                "role": UserRole.HOTEL_OWNER,
             }
         }
 
-     # Helper method to get combined permissions from individual and group assignments
+    # Helper method to get combined permissions from individual and group assignments
     async def get_all_permissions(self) -> list[RolePermission]:
         # Start with user's individual permissions
         all_permissions = self.role_permissions.copy()
@@ -168,10 +156,7 @@ class User(Document):
             if group:
                 # Convert GroupPermission to RolePermission
                 group_perms = [
-                    RolePermission(
-                        resource=perm.resource,
-                        permissions=perm.permission
-                    )
+                    RolePermission(resource=perm.resource, permissions=perm.permission)
                     for perm in group.permissions
                 ]
                 all_permissions.extend(group_perms)
@@ -188,8 +173,15 @@ async def assign_role_permissions_to_owner(user: User, role: UserRole) -> None:
     permission_mappings = {
         UserRole.SUPER_ADMIN: [
             # Super admin permissions
-            (Resource.USER, [Permission.CREATE, Permission.READ,
-             Permission.UPDATE, Permission.DELETE]),
+            (
+                Resource.USER,
+                [
+                    Permission.CREATE,
+                    Permission.READ,
+                    Permission.UPDATE,
+                    Permission.DELETE,
+                ],
+            ),
             (Resource.ORDER, [Permission.READ, Permission.UPDATE]),
             (Resource.PAYMENT, [Permission.READ]),
             (Resource.INVENTORY, [Permission.READ]),
@@ -197,21 +189,56 @@ async def assign_role_permissions_to_owner(user: User, role: UserRole) -> None:
         ],
         UserRole.HOTEL_OWNER: [
             # Hotel owner permissions
-            (Resource.USER, [Permission.CREATE, Permission.READ,
-             Permission.UPDATE, Permission.DELETE]),
-            (Resource.ITEM, [Permission.CREATE, Permission.READ,
-             Permission.UPDATE, Permission.DELETE]),
+            (
+                Resource.USER,
+                [
+                    Permission.CREATE,
+                    Permission.READ,
+                    Permission.UPDATE,
+                    Permission.DELETE,
+                ],
+            ),
+            (
+                Resource.ITEM,
+                [
+                    Permission.CREATE,
+                    Permission.READ,
+                    Permission.UPDATE,
+                    Permission.DELETE,
+                ],
+            ),
             (Resource.ORDER, [Permission.READ, Permission.UPDATE]),
             (Resource.PAYMENT, [Permission.READ]),
-            (Resource.INVENTORY, [
-             Permission.CREATE, Permission.READ, Permission.UPDATE, Permission.DELETE]),
-            (Resource.STOCK, [Permission.CREATE, Permission.READ,
-             Permission.UPDATE, Permission.DELETE]),
+            (
+                Resource.INVENTORY,
+                [
+                    Permission.CREATE,
+                    Permission.READ,
+                    Permission.UPDATE,
+                    Permission.DELETE,
+                ],
+            ),
+            (
+                Resource.STOCK,
+                [
+                    Permission.CREATE,
+                    Permission.READ,
+                    Permission.UPDATE,
+                    Permission.DELETE,
+                ],
+            ),
         ],
         UserRole.GUEST: [
             # Guest permissions
-            (Resource.ORDER, [Permission.CREATE, Permission.READ,
-             Permission.UPDATE, Permission.DELETE]),
+            (
+                Resource.ORDER,
+                [
+                    Permission.CREATE,
+                    Permission.READ,
+                    Permission.UPDATE,
+                    Permission.DELETE,
+                ],
+            ),
             (Resource.PAYMENT, [Permission.READ]),
             (Resource.ITEM, [Permission.READ]),
         ],
@@ -222,10 +249,7 @@ async def assign_role_permissions_to_owner(user: User, role: UserRole) -> None:
 
     # Create RolePermission objects
     user.role_permissions = [
-        RolePermission(
-            resource=resource,
-            permission=permissions
-        )
+        RolePermission(resource=resource, permission=permissions)
         for resource, permissions in role_perms
     ]
 

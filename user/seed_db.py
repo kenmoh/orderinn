@@ -136,15 +136,15 @@
     "role": "HOTEL_OWNER",
     "company_id": "company_uuid",
     "resource": ["USER"],
-    "permissions": ["CREATE", "READ", "UPDATE", "DELETE"]
+    "permissions": ["CREATE", "READ", "UPDATE", "DELETE"],
 }
 
 
-names = 'Ken, Moh, Ken'
+names = "Ken, Moh, Ken"
 
-names_list = [name.strip() for name in names.split(',')]
+names_list = [name.strip() for name in names.split(",")]
 
-new_names = ', '.join(names_list)
+new_names = ", ".join(names_list)
 
 print(new_names)
 # print(names.split(',').join(','))

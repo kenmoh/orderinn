@@ -54,7 +54,9 @@ async def get_current_user(
         if id is None:
             raise credentials_exception
 
-        user = await user_model.User.find(user_model.User.id == PydanticObjectId(id)).first_or_none()
+        user = await user_model.User.find(
+            user_model.User.id == PydanticObjectId(id)
+        ).first_or_none()
 
         if user is None:
             raise credentials_exception
