@@ -141,48 +141,7 @@ class OrderService:
             raise PermissionError("You are not authorized to create an order.")
 
         try:
-            # # Calculate total amount
-            # total_amount = self.calculate_total_amount(items)
 
-            # # Create order instance
-            # order = Order(
-            #     guest_id=guest_id,
-            #     company_id=company_id,
-            #     room_number=room_number,
-            #     items=items,
-            #     total_amount=total_amount,
-            #     payment_status=PaymentStatus.PENDING,
-            #     payment_type=payment_type,
-            #     order_status=OrderStatus.PENDING,
-            # )
-
-            # decoded_sk = self.decode_payment_config(sk)
-
-            # # Generate payment link
-            # payment_link = self.generate_payment_link(
-            #     order.id, total_amount, sk=decoded_sk, payment_provider=payment_provider, customer_email=customer_email
-            # )
-
-            # # Update order with payment link
-            # order.paymen_url = payment_link
-
-            # async with db as session:
-            #     session.add(order)
-            #     await session.commit()
-            #     await session.refresh(order)
-
-            # # Create return schema
-            # return OrderReturnSchema(
-            #     id=str(order.id),
-            #     guest_id=guest_id,
-            #     company_id=company_id,
-            #     room_number=room_number,
-            #     payment_status=order.payment_status,
-            #     payment_provider=payment_provider,
-            #     order_status=order.order_status,
-            #     items=items,
-            # )
-            # Decrypt payment secret key
             decrypted_sk = self.decode_payment_config(sk)
             if not decrypted_sk:
                 raise ValueError("Invalid payment configuration")

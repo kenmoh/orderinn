@@ -3,9 +3,39 @@ from decimal import Decimal
 from typing import Optional, List
 import uuid
 from sqlmodel import SQLModel, Field, Relationship
-from enum import Enum
+
+from beanie import Document, Link, PydanticObjectId
 
 from ..schema.item_schemas import ItemCategory, UnitType
+
+
+class ItemStock(Document):
+    user_id: PydanticObjectId
+    quantity: int
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+    class Settings:
+        name = 'stocks'
+
+
+class Item(Document):
+    name: str
+    description: Optional[str] = None
+    price: Decimal
+    company_id: str
+    quantity: int | None = None
+    unit: Optional[str] = None  # e.g kg, piece
+    reorder_point: int | None = None
+    category: ItemCategory
+    image_url: Optional[str] = None
+    stocks: list[Link[ItemStock]] = []  # List of references to ItemStock
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+    class Settings:
+        name = 'items'
 
 
 class ItemBase(SQLModel):
@@ -27,7 +57,8 @@ class Item(ItemBase, table=True):
     # Relationships
     inventory: "Inventory" = Relationship(
         back_populates="item",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan", "uselist": False},
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan", "uselist": False},
     )
 
 

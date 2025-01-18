@@ -105,7 +105,7 @@ async def delete_item(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-# =============== INVENTORY AND STOCL=K ===============
+# =============== INVENTORY AND STOCK ===============
 @item_router.get('/{company_id}/inventory', status_code=status.HTTP_200_OK)
 async def get_company_inventories(company_id: str, db: AsyncSession = Depends(get_db)) -> list[InventoryReturnSchema]:
     try:
