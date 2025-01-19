@@ -28,9 +28,9 @@ class Item(Document):
     price: Decimal
     company_id: PydanticObjectId
     user_id: PydanticObjectId
-    quantity: int | None = None
-    unit: str | None = None  # e.g kg, piece
-    reorder_point: int | None = None
+    quantity: int = 0
+    unit: str  # e.g kg, piece
+    reorder_point: int = 0
     category: ItemCategory
     image_url: str | None = None
     stocks: list[Link[ItemStock]] = []  # List of references to ItemStock

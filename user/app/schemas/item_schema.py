@@ -1,9 +1,8 @@
+from datetime import datetime
 from decimal import Decimal
-from typing import Annotated
 from enum import Enum
 from beanie import PydanticObjectId
-from pydantic import BaseModel, field_validator
-from bson import Decimal128
+from pydantic import BaseModel
 
 
 class ItemCategory(str, Enum):
@@ -15,6 +14,8 @@ class ItemCategory(str, Enum):
 class CreateItemSchema(BaseModel):
     name: str
     description: str
+    unit: str
+    reorder_point: int
     price: Decimal
     image_url: str
     category: ItemCategory
@@ -22,3 +23,20 @@ class CreateItemSchema(BaseModel):
 
 class CreateItemReturnSchema(CreateItemSchema):
     id: PydanticObjectId
+
+
+class ItemStockSchema(BaseModel):
+    quantity: int
+    notes: str | None = None
+
+
+class ItemStockReturnSchema(ItemStockSchema):
+    id: PydanticObjectId
+    created_at: datetime
+
+
+class InventorySchecma(CreateItemReturnSchema):
+    quantity: int
+    unit: str
+    reorder_point: int
+    stocks: list[ItemStockSchema]

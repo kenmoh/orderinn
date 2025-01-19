@@ -1,13 +1,13 @@
-import uuid
-from beanie import PydanticObjectId
+import datetime
+from pprint import pprint
+from beanie import DeleteRules, PydanticObjectId, WriteRules
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
 from beanie.odm.operators.find.logical import Or, And
 
 from ..models.user_model import User
 
 from ..models.item_model import ItemStock, Item
-from ..schemas.item_schema import CreateItemReturnSchema, CreateItemSchema
+from ..schemas.item_schema import CreateItemReturnSchema, CreateItemSchema, InventorySchecma, ItemStockSchema
 from ..utils.utils import ServicePermissionError, UserRole, Permission, Resource
 
 
@@ -64,10 +64,13 @@ class ItemService:
     async def get_company_items(self, company_id: PydanticObjectId):
         return await Item.find(Item.company_id == company_id).to_list()
 
-    async def get_item(self, item_id: int, db: AsyncSession):
-        stmt = select(Item).where(Item.id == item_id)
-        item = await db.execute(stmt)
-        return item.scalar_one_or_none()
+    async def get_item(self, item_id: PydanticObjectId):
+        item = await Item.find_one(Item.id == item_id)
+
+        if not item:
+            raise ServicePermissionError('Item not found.')
+
+        return item
 
     async def create_item(
         self,
@@ -112,6 +115,8 @@ class ItemService:
             description=item.description,
             price=item.price,
             image_url=item.image_url,
+            unit=item.unit,
+            reorder_point=item.reorder_point
         )
 
         return await new_item.save()
@@ -159,6 +164,8 @@ class ItemService:
         db_item.price = item.price
         db_item.image_url = item.image_url
         db_item.description = item.description
+        db_item.unit = item.unit
+        db_item.reorder_point = item.reorder_point
 
         return await db_item.save()
 
@@ -180,6 +187,7 @@ class ItemService:
                 Item.id == item_id,
                 Item.company_id == company_id,
                 Item.user_id == current_user.id,
+                fetch_links=True
             ).first_or_none()
 
             if not db_item:
@@ -191,13 +199,13 @@ class ItemService:
             ):
                 raise ServicePermissionError("Permission deinied!")
 
-            await db_item.delete()
+            await db_item.delete(link_rule=DeleteRules.DELETE_LINKS)
 
         except Exception as e:
-            raise ValueError('Failed to delete', str(e))from e
+            raise ValueError('Failed to delete', str(e))
 
 
-class StockAndInventoryService:
+class InventoryService:
     async def get_inventories(self, company_id: str, db: AsyncSession):
         """
         Retrieve all inventories with associated item details for a specific company.
@@ -220,53 +228,60 @@ class StockAndInventoryService:
         """
 
     async def get_inventory(
-        self, inventory_id: str, company_id: str, db: AsyncSession
-    ) -> dict | None:
+        self, item_id: str, current_user: User,
+    ) -> InventorySchecma:
         """
-        Retrieve a single inventory with associated item details.
-
-        Args:
-            inventory_id (str): The unique identifier of the inventory
-            db (AsyncSession): The database session for executing queries
-
-        Returns:
-            dict | None: Dictionary containing inventory details or None if not found:
-                - item_id (int): The unique identifier of the item
-                - quantity (int): Current stock quantity
-                - company_id (str): The company identifier
-                - name (str): Item name
-                - price (float): Item price
-                - unit (str): Unit of measurement
-                - category (str): Item category
-                - updated_at (datetime): Last update timestamp
-
+        Retrieve a single inventory for an item.
         """
 
-    def check_authorization_for_stock(
-        self, role: str, permission: str, resource: str
-    ) -> bool:
-        """
-        Check if user has required role and permission for a resource
-        Returns True if authorized, False otherwise
-        """
+        company_id = current_user.company_id if current_user.company_id else current_user.id
+
+        item = await Item.find(Item.id == item_id, Item.company_id == company_id, fetch_links=True).first_or_none()
+        pprint('ITEM: ', item)
+
+        if not item:
+            raise ServicePermissionError('Item not found')
+
+        try:
+
+            return {
+                "name": item.name,
+                "description": item.description,
+                "price": item.price,
+                "image_url": item.image_url,
+                "category": item.category,
+                "id": item.id,
+                "quantity": item.quantity,
+                "unit": item.unit,
+                "reorder_point": item.reorder_point,
+                "stocks": [
+                    {
+
+                        "quantity": stock.quantity,
+                        "notes": stock.notes
+                    }
+                    for stock in item.stocks
+                ]
+            }
+        except Exception as e:
+            raise str(e)
 
     async def add_new_stock(
         self,
-        inventory_id: int,
-        user_id: uuid.UUID,
-        company_id: uuid.UUID,
-        role: str,
-        resource: str,
-        permission: str,
-        # stock: AddStockSchema,
-        db: AsyncSession,
-    ):
+        item_id: PydanticObjectId,
+        current_user: User,
+        role_permission: UserRole,
+        resource: Resource,
+        operation: Permission,
+        stock: ItemStockSchema
+    ) -> ItemStockSchema:
+        # Get MongoDB client
         """
         Add new stock to inventory
         Args:
             inventory_id (int): The ID of the inventory to which the stock will be added.
-            user_id (uuid.UUID): The ID of the user adding the stock.
-            company_id (uuid.UUID): The ID of the company to which the inventory belongs.
+            user_id (str): The ID of the user adding the stock.
+            company_id (str): The ID of the company to which the inventory belongs.
             role (str): The role of the user adding the stock.
             resource (str): The resource being accessed.
             permission (str): The permission level of the user.
@@ -277,34 +292,78 @@ class StockAndInventoryService:
             str: An error message if authorization fails or if the inventory does not belong to the company.
         Raises:
             SQLAlchemyError: If there is an error committing the transaction to the database.
-
         """
+        item: Item = await Item.find(Item.id == item_id).first_or_none()
+
+        if not item:
+            raise ServicePermissionError('Item not found.')
+
+        if not ItemService().has_permission(role_permissions=role_permission, operation=operation, resource=resource):
+            raise ServicePermissionError('Permission denied.')
+
+        new_stock = ItemStock(
+            user_id=current_user.id,
+            item_id=item.id,
+            company_id=current_user.company_id if current_user.company_id else current_user.id,
+            notes=stock.notes,
+            quantity=stock.quantity
+
+        )
+        # await new_stock.save()
+
+        item.quantity += new_stock.quantity
+        item.stocks.append(new_stock)
+        await item.save(link_rule=WriteRules.WRITE)
+
+        return new_stock
 
     async def update_stock(
         self,
-        inventory_id: int,
-        user_id: int,
-        stock_id: int,
-        role: str,
-        resource: str,
-        permission: str,
-        # stock: AddStockSchema,
-        db: AsyncSession,
+        item_id: PydanticObjectId,
+        stock_id: PydanticObjectId,
+        current_user: User,
+        role_permission: UserRole,
+        resource: Resource,
+        operation: Permission,
+        stock: ItemStockSchema
     ):
         """
         Updates the stock information for a given inventory and stock ID.
 
         Args:
-            inventory_id (int): The ID of the inventory to update.
+            inventory_id (str): The ID of the inventory to update.
             user_id (str): The UUID of the user performing the update.
-            stodk_id (int): The ID of the stock to update.
+            stodk_id (str): The ID of the stock to update.
             role (str): The role of the user.
             resource (str): The resource being accessed.
             permission (str): The permission level of the user.
-            stock (AddStockSchema): The new stock data to update.
-            db (AsyncSession): The database session.
 
         Returns:
             Stock: The updated stock object if successful.
             str: 'Permission denied!' if the user does not have the required permissions.
         """
+        company_id = current_user.company_id if current_user.company_id else current_user.id
+        item = await Item.find(Item.id == item_id, Item.company_id == company_id).first_or_none()
+        existing_stock: ItemStock = await ItemStock.find(ItemStock.id == stock_id, ItemStock.user_id == current_user.id).first_or_none()
+
+        # Remove existing stock quantity from item quantity
+        item.quantity -= existing_stock.quantity
+
+        if not ItemService().has_permission(role_permissions=role_permission, resource=resource, operation=operation):
+            raise ServicePermissionError('Permission denied.')
+
+        try:
+            existing_stock.quantity = stock.quantity
+            existing_stock.notes = stock.notes
+            existing_stock.updated_at = datetime.datetime.now()
+
+            await existing_stock.save()
+
+            item.quantity += existing_stock.quantity
+
+            await item.save()
+
+            return existing_stock
+        except Exception as e:
+            print(e)
+            raise e

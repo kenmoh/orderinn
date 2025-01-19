@@ -434,7 +434,7 @@ class StockAndInventoryService:
                 quantity_diff = stock.quantity - existing_stock.quantity
 
                 # Update stock
-                existing_stock.quantity = stock.quantity
+
                 existing_stock.quantity = stock.quantity
                 existing_stock.user_id = user_id
                 existing_stock.notes = stock.notes
