@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import SQLModel, text
 
+from ..models.order_model import Order
 from ..models.user_model import NoPostRoom, Outlet, PermissionGroup, QRCode, User
 from ..models.item_model import Item, ItemStock
 
@@ -25,7 +26,8 @@ SessionLocal = async_sessionmaker(
 
 async def init_user_db():
     client = AsyncIOMotorClient(
-        f"mongodb+srv://{USERNAME}:{PASSWORD}@orderinn.p98d4.mongodb.net/"
+        # f"mongodb+srv://{USERNAME}:{PASSWORD}@orderinn.p98d4.mongodb.net/"
+        "mongodb://localhost:27017"
     )
     await init_beanie(
         database=client.orderinn,
@@ -37,6 +39,7 @@ async def init_user_db():
             NoPostRoom,
             ItemStock,
             Item,
+            Order,
         ],
     )
 

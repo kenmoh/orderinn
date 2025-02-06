@@ -10,7 +10,7 @@ from ..schemas.user_schema import (
     GroupPermission,
     RolePermission,
     SubscriptionType,
-    PaymentGateway,
+    PaymentGatewayEnum,
     OutletType,
 )
 
@@ -46,7 +46,7 @@ class PaymentGateway(BaseModel):
 
     payment_gateway_key: str
     payment_gateway_secret: str
-    payment_gateway_provider: PaymentGateway
+    payment_gateway_provider: PaymentGatewayEnum
 
 
 class Outlet(Document):

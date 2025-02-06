@@ -1,7 +1,6 @@
 from beanie import PydanticObjectId
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from jose import JWTError, jwt
 
@@ -10,7 +9,6 @@ from user.app.models import user_model
 from ..schemas.user_schema import UserReturnSchema
 from ..config import get_settings
 from ..database.database import get_db
-from ..models.users import User
 
 
 settings = get_settings()

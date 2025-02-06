@@ -1,17 +1,5 @@
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import secrets
-
-from cryptography.fernet import Fernet
-
-
-# print(secrets.token_urlsafe(32))
-
-# def generate_key():
-#     return Fernet.generate_key()
-
-
-# print(generate_key())
 
 
 class Settings(BaseSettings):
@@ -32,13 +20,12 @@ class Settings(BaseSettings):
     ENCRYPTION_KEY: str
     USERNAME: str
     PASSWORD: str
-    # ENCRYPTION_KEY: str
     # REDIS_URL: str
     # MAIL_USERNAME: str
     # MAIL_PASSWORD: str
     # MAIL_FROM: str
     # MAIL_SERVER: str
-    ENV: str = "production"
+    ENV: str = "development"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

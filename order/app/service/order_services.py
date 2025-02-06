@@ -1,9 +1,7 @@
 from decimal import Decimal
-import json
 import uuid
 
 import requests
-from idna import decode
 from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from cryptography.fernet import Fernet
@@ -137,8 +135,6 @@ class OrderService:
         db: AsyncSession,
     ) -> OrderReturnSchema:
         """Create a new order with payment integration"""
-        if not self.check_authorization_to_order(UserRole.GUEST):
-            raise PermissionError("You are not authorized to create an order.")
 
         try:
 
@@ -169,17 +165,17 @@ class OrderService:
             await db.flush()
 
             # Generate payment link
-            # payment_link = self.generate_payment_link(
-            #     order_id=new_order.id,
-            #     total_amount=total_amount,
-            #     payment_provider=payment_provider.value,
-            #     customer_email=customer_email,
-            #     sk=decrypted_sk,
-            # )
+            payment_link = self.generate_payment_link(
+                order_id=new_order.id,
+                total_amount=total_amount,
+                payment_provider=payment_provider.value,
+                customer_email=customer_email,
+                sk=decrypted_sk,
+            )
 
             print(decrypted_sk, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXX')
 
-            new_order.payment_url = 'payment_link'
+            new_order.payment_url = payment_link
 
             await db.commit()
             await db.refresh(new_order)
@@ -194,7 +190,7 @@ class OrderService:
                 payment_type=payment_type,
                 status=OrderStatus.PENDING,
                 payment_status=PaymentStatus.PENDING,
-                # payment_link=payment_link,
+                payment_link=payment_link,
             )
 
         except Exception as e:

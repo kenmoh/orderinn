@@ -1,5 +1,5 @@
 import datetime
-from pprint import pprint
+
 from beanie import DeleteRules, PydanticObjectId, WriteRules
 from sqlalchemy.ext.asyncio import AsyncSession
 from beanie.odm.operators.find.logical import Or, And
@@ -7,7 +7,12 @@ from beanie.odm.operators.find.logical import Or, And
 from ..models.user_model import User
 
 from ..models.item_model import ItemStock, Item
-from ..schemas.item_schema import CreateItemReturnSchema, CreateItemSchema, InventorySchecma, ItemStockSchema
+from ..schemas.item_schema import (
+    CreateItemReturnSchema,
+    CreateItemSchema,
+    InventorySchecma,
+    ItemStockSchema,
+)
 from ..utils.utils import ServicePermissionError, UserRole, Permission, Resource
 
 
@@ -31,44 +36,43 @@ class ItemService:
                 return True
         return False
 
-    def check_authorization_for_item(
-        self, role: UserRole, permissions: list[Permission], resources: list[Resource]
-    ) -> bool:
-        """
-        Check if user has required role and permission for a resource
-        Returns True if authorized, False otherwise
-        """
+    # def check_authorization_for_item(
+    #     self, role: UserRole, permissions: list[Permission], resources: list[Resource]
+    # ) -> bool:
+    #     """
+    #     Check if user has required role and permission for a resource
+    #     Returns True if authorized, False otherwise
+    #     """
 
-        required_resource = [
-            "Resource.PAYMENT",
-            "Resource.USER",
-            "Resource.STOCK",
-            "Resource.ITEM",
-            "Resource.ORDER",
-        ]
+    #     required_resource = [
+    #         "Resource.PAYMENT",
+    #         "Resource.USER",
+    #         "Resource.STOCK",
+    #         "Resource.ITEM",
+    #         "Resource.ORDER",
+    #     ]
 
-        required_permission = [
-            "Permission.READ",
-            "Permission.DELETE",
-            "Permission.CREATE",
-            "Permission.UPDATE",
-        ]
+    #     required_permission = [
+    #         "Permission.READ",
+    #         "Permission.DELETE",
+    #         "Permission.CREATE",
+    #         "Permission.UPDATE",
+    #     ]
 
-        # Check if user has the required role, permission and resource
-        return (
-            role
-            and (permissions == required_permission)
-            and (resources == required_resource)
-        )
+    #     # Check if user has the required role, permission and resource
+    #     return (
+    #         role
+    #         and (permissions == required_permission)
+    #         and (resources == required_resource)
+    #     )
 
     async def get_company_items(self, company_id: PydanticObjectId):
         return await Item.find(Item.company_id == company_id).to_list()
 
     async def get_item(self, item_id: PydanticObjectId):
         item = await Item.find_one(Item.id == item_id)
-
         if not item:
-            raise ServicePermissionError('Item not found.')
+            raise ServicePermissionError("Item not found.")
 
         return item
 
@@ -116,7 +120,7 @@ class ItemService:
             price=item.price,
             image_url=item.image_url,
             unit=item.unit,
-            reorder_point=item.reorder_point
+            reorder_point=item.reorder_point,
         )
 
         return await new_item.save()
@@ -181,18 +185,19 @@ class ItemService:
         Delete an item from the db
         """
         try:
-            company_id = current_user.company_id if current_user.company_id else current_user.id
+            company_id = (
+                current_user.company_id if current_user.company_id else current_user.id
+            )
 
             db_item: Item = await Item.find(
                 Item.id == item_id,
                 Item.company_id == company_id,
                 Item.user_id == current_user.id,
-                fetch_links=True
+                fetch_links=True,
             ).first_or_none()
 
             if not db_item:
-                raise ServicePermissionError(
-                    "You can only delete item you created.")
+                raise ServicePermissionError("You can only delete item you created.")
 
             if not self.has_permission(
                 role_permissions=role_permission, resource=resource, operation=operation
@@ -202,7 +207,7 @@ class ItemService:
             await db_item.delete(link_rule=DeleteRules.DELETE_LINKS)
 
         except Exception as e:
-            raise ValueError('Failed to delete', str(e))
+            raise ValueError("Failed to delete", str(e))
 
 
 class InventoryService:
@@ -228,43 +233,54 @@ class InventoryService:
         """
 
     async def get_inventory(
-        self, item_id: str, current_user: User,
+        self,
+        item_id: PydanticObjectId,
+        current_user: User,
     ) -> InventorySchecma:
         """
-        Retrieve a single inventory for an item.
+        Retrieve inventory for an item.
+
+        Args:
+            item_id: The ID of the item to retrieve
+            current_user: The current user making the request
+
+        Returns:
+            InventorySchema: The inventory data
+
+        Raises:
+            ServicePermissionError: If item not found or user doesn't have access
+
         """
+        company_id = (
+            current_user.company_id if current_user.company_id else current_user.id
+        )
+        item_inventory = await Item.find(
+            Item.id == item_id, Item.company_id == company_id, fetch_links=True
+        ).first_or_none()
 
-        company_id = current_user.company_id if current_user.company_id else current_user.id
-
-        item = await Item.find(Item.id == item_id, Item.company_id == company_id, fetch_links=True).first_or_none()
-        pprint('ITEM: ', item)
-
-        if not item:
-            raise ServicePermissionError('Item not found')
+        if not item_inventory:
+            raise ServicePermissionError("Item not found")
 
         try:
+            inventory = InventorySchecma(
+                id=item_inventory.id,
+                name=item_inventory.name,
+                description=item_inventory.description,
+                price=item_inventory.price,
+                image_url=item_inventory.image_url,
+                category=item_inventory.category,
+                quantity=item_inventory.quantity,
+                unit=item_inventory.unit,
+                reorder_point=item_inventory.reorder_point,
+                stocks=[
+                    ItemStockSchema(quantity=stock.quantity, notes=stock.notes)
+                    for stock in item_inventory.stocks
+                ],
+            )
 
-            return {
-                "name": item.name,
-                "description": item.description,
-                "price": item.price,
-                "image_url": item.image_url,
-                "category": item.category,
-                "id": item.id,
-                "quantity": item.quantity,
-                "unit": item.unit,
-                "reorder_point": item.reorder_point,
-                "stocks": [
-                    {
-
-                        "quantity": stock.quantity,
-                        "notes": stock.notes
-                    }
-                    for stock in item.stocks
-                ]
-            }
+            return inventory
         except Exception as e:
-            raise str(e)
+            raise ValueError(f"Failed to retrieve inventory: {str(e)}")
 
     async def add_new_stock(
         self,
@@ -273,7 +289,7 @@ class InventoryService:
         role_permission: UserRole,
         resource: Resource,
         operation: Permission,
-        stock: ItemStockSchema
+        stock: ItemStockSchema,
     ) -> ItemStockSchema:
         # Get MongoDB client
         """
@@ -296,18 +312,21 @@ class InventoryService:
         item: Item = await Item.find(Item.id == item_id).first_or_none()
 
         if not item:
-            raise ServicePermissionError('Item not found.')
+            raise ServicePermissionError("Item not found.")
 
-        if not ItemService().has_permission(role_permissions=role_permission, operation=operation, resource=resource):
-            raise ServicePermissionError('Permission denied.')
+        if not ItemService().has_permission(
+            role_permissions=role_permission, operation=operation, resource=resource
+        ):
+            raise ServicePermissionError("Permission denied.")
 
         new_stock = ItemStock(
             user_id=current_user.id,
             item_id=item.id,
-            company_id=current_user.company_id if current_user.company_id else current_user.id,
+            company_id=current_user.company_id
+            if current_user.company_id
+            else current_user.id,
             notes=stock.notes,
-            quantity=stock.quantity
-
+            quantity=stock.quantity,
         )
         # await new_stock.save()
 
@@ -325,7 +344,7 @@ class InventoryService:
         role_permission: UserRole,
         resource: Resource,
         operation: Permission,
-        stock: ItemStockSchema
+        stock: ItemStockSchema,
     ):
         """
         Updates the stock information for a given inventory and stock ID.
@@ -342,15 +361,23 @@ class InventoryService:
             Stock: The updated stock object if successful.
             str: 'Permission denied!' if the user does not have the required permissions.
         """
-        company_id = current_user.company_id if current_user.company_id else current_user.id
-        item = await Item.find(Item.id == item_id, Item.company_id == company_id).first_or_none()
-        existing_stock: ItemStock = await ItemStock.find(ItemStock.id == stock_id, ItemStock.user_id == current_user.id).first_or_none()
+        company_id = (
+            current_user.company_id if current_user.company_id else current_user.id
+        )
+        item = await Item.find(
+            Item.id == item_id, Item.company_id == company_id
+        ).first_or_none()
+        existing_stock: ItemStock = await ItemStock.find(
+            ItemStock.id == stock_id, ItemStock.user_id == current_user.id
+        ).first_or_none()
 
         # Remove existing stock quantity from item quantity
         item.quantity -= existing_stock.quantity
 
-        if not ItemService().has_permission(role_permissions=role_permission, resource=resource, operation=operation):
-            raise ServicePermissionError('Permission denied.')
+        if not ItemService().has_permission(
+            role_permissions=role_permission, resource=resource, operation=operation
+        ):
+            raise ServicePermissionError("Permission denied.")
 
         try:
             existing_stock.quantity = stock.quantity
@@ -365,5 +392,4 @@ class InventoryService:
 
             return existing_stock
         except Exception as e:
-            print(e)
             raise e

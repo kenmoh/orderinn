@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List
+from typing import List
 import uuid
 from sqlmodel import Field, SQLModel, Column
 from sqlalchemy.dialects.postgresql import JSON

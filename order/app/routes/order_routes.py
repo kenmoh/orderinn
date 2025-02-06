@@ -12,10 +12,15 @@ order_service = OrderService()
 order_router = APIRouter(tags=["Order"], prefix="/api/v1/order")
 
 
-@order_router.post("/create-order", status_code=status.HTTP_201_CREATED)
+@order_router.post("/orders", status_code=status.HTTP_200_OK)
+async def get_orders():
+    return {"message": 'Hello from order service.'}
+
+
+@order_router.post("/orders", status_code=status.HTTP_201_CREATED)
 async def create_order(
-    guest_id: uuid.UUID,
-    company_id: uuid.UUID,
+    guest_id: str,
+    company_id: str,
     room_number: str,
     sk: str,
     customer_email: EmailStr,

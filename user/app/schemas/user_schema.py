@@ -6,7 +6,7 @@ from pydantic import BaseModel, EmailStr, Field
 from ..utils.utils import UserRole, Resource, Permission
 
 
-class PaymentGateway(str, Enum):
+class PaymentGatewayEnum(str, Enum):
     FLUTTERWAVE = "flutterwave"
     PAYSTACK = "paystack"
 
@@ -118,7 +118,7 @@ class ProfileSchema(BaseModel):
 class GatewaySchema(BaseModel):
     payment_gateway_key: str
     payment_gateway_secret: str
-    payment_gateway_provider: PaymentGateway | str
+    payment_gateway_provider: PaymentGatewayEnum | str
 
 
 class ProfileReturnSchema(BaseModel):

@@ -1,11 +1,9 @@
 from datetime import datetime, timedelta
-from sqlmodel import select
 from typing import Optional
 from jose import jwt
 from passlib.context import CryptContext
 
 from ..config import get_settings
-from ..models.users import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

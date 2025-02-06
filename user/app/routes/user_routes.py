@@ -30,7 +30,7 @@ from ..schemas.user_schema import (
     StaffUserReturnSchema,
     UserReturnSchema,
 )
-from ..models.users import User
+from ..models.user_model import User
 
 user_router = APIRouter(tags=["Users"], prefix="/api/v1")
 

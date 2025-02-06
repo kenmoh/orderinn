@@ -35,8 +35,14 @@ class ItemStockReturnSchema(ItemStockSchema):
     created_at: datetime
 
 
-class InventorySchecma(CreateItemReturnSchema):
+class InventorySchecma(BaseModel):
+    id: PydanticObjectId
+    name: str
     quantity: int
     unit: str
     reorder_point: int
+    price: Decimal
+    image_url: str
+    category: ItemCategory
+    description: str
     stocks: list[ItemStockSchema]

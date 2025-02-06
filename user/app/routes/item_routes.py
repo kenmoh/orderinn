@@ -23,8 +23,7 @@ async def get_items(
     try:
         return await item_service.get_company_items(company_id=comapny_id)
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @item_router.post("/items", status_code=status.HTTP_201_CREATED)
@@ -40,8 +39,7 @@ async def create_item(
             role_permission=current_user.role_permissions,
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @item_router.patch("/{item_id}/items", status_code=status.HTTP_202_ACCEPTED)
@@ -60,8 +58,7 @@ async def update_company_item(
             role_permission=current_user.role_permissions,
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
 @item_router.get("/items/{item_id}", status_code=status.HTTP_200_OK)
@@ -70,12 +67,9 @@ async def get_item(
     current_user: User = Depends(get_current_user),
 ) -> CreateItemReturnSchema:
     try:
-        await item_service.get_item(
-            item_id=item_id
-        )
+        return await item_service.get_item(item_id=item_id)
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @item_router.delete("/{item_id}/items", status_code=status.HTTP_204_NO_CONTENT)
@@ -92,5 +86,4 @@ async def delete_company_item(
             role_permission=current_user.role_permissions,
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))

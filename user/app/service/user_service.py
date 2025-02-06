@@ -20,7 +20,7 @@ from ..utils.utils import ServicePermissionError
 
 from ..utils.auth import hash_password
 from ..models import user_model
-from ..models.users import RolePermission, User, UserRole, QRCode
+from ..models.user_model import RolePermission, User, UserRole, QRCode
 from ..schemas.user_schema import (
     AddStaffToOutletSchema,
     AssignGroupToStaffSchema,
